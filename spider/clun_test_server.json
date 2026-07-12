@@ -1,0 +1,24 @@
+{
+  "sites": [
+    {
+      "key": "test_server",
+      "name": "🔬测试丨JS爬虫",
+      "type": 3,
+      "api": "http://127.0.0.1:8080/clun_test_server.js",
+      "searchable": 1,
+      "quickSearch": 1,
+      "filterable": 0
+    },
+    {
+      "key": "test_server_local",
+      "name": "🔬测试丨本地JS",
+      "type": 3,
+      "api": "./clun_test_server.js",
+      "searchable": 1,
+      "quickSearch": 1,
+      "filterable": 0
+    }
+  ],
+  "lives": [],
+  "parses": []
+}
