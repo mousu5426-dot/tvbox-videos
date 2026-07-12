@@ -45,9 +45,9 @@
         },
         {
             "key": "xhamster_spider",
-            "name": "xHamster测试爬虫",
+            "name": "xHamster(修复版v2)",
             "type": 3,
-            "api": "https://ghp.ci/raw.githubusercontent.com/mousu5426-dot/tvbox-videos/main/scripts/tvbox_xhamster_spider.js",
+            "api": "https://raw.githubusercontent.com/mousu5426-dot/tvbox-videos/main/scripts/tvbox_xhamster_spider.js",
             "searchable": 1,
             "quickSearch": 1,
             "changeable": 1,
