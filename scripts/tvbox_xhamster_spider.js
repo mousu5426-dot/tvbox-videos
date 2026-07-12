@@ -81,20 +81,29 @@ function parseVideoList(html, base, limit) {
     var results = [];
     var seenHrefs = {};
 
+    log('parseVideoList: html.length=' + html.length + ' limit=' + limit);
+
+    // 找到所有指向视频的 <a> 链接 (匹配 /videos/ 路径)
     var linkRe = /<a[^>]*href=["']([^"'\s]*\/videos\/[^"'\s]*)["'][^>]*>([\s\S]*?)<\/a>/gi;
+    var hrefCount = 0;
     var m;
     while ((m = linkRe.exec(html)) !== null) {
+        hrefCount++;
         var href = m[1];
         if (!href.startsWith('http')) href = base + href;
         if (seenHrefs[href]) continue;
         seenHrefs[href] = true;
 
         var linkContent = m[2];
+
+        // 用 match 索引前+后区域找图 (data-src 或 src)
         var searchStart = Math.max(0, m.index - 600);
         var searchEnd = Math.min(html.length, m.index + 1200);
         var nearby = html.substring(searchStart, searchEnd);
 
+        // ---- 缩略图 ----
         var pic = '';
+        // 优先 data-src (懒加载)
         var dsM = nearby.match(/<img[^>]*data-src=["']([^"']*)["'][^>]*>/i);
         if (dsM && dsM[1].indexOf('blank') === -1 && dsM[1].indexOf('data:') !== 0) {
             pic = sanitizeUrl(dsM[1]);
@@ -110,17 +119,22 @@ function parseVideoList(html, base, limit) {
             if (thumbM) pic = sanitizeUrl(thumbM[1]);
         }
 
+        // ---- 标题 ----
         var title = '';
+        // 方式A: 链接内的 img[alt] 
         var altM = linkContent.match(/alt\s*=\s*"([^"]*)"/i);
         if (altM && altM[1].length > 2 && altM[1] !== 'Video') title = clean(altM[1]);
+        // 方式B: data-title
         if (!title) {
             var dtM = nearby.match(/data-title\s*=\s*"([^"]*)"/i);
             if (dtM) title = clean(dtM[1]);
         }
+        // 方式C: title 属性
         if (!title) {
             var taM = m[0].match(/title\s*=\s*"([^"]*)"/i);
             if (taM && taM[1].length > 2) title = clean(taM[1]);
         }
+        // 方式D: URL slug
         if (!title) {
             var slug = href.split('/').pop() || '';
             title = slug.replace(/[_-]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -128,10 +142,12 @@ function parseVideoList(html, base, limit) {
         }
         if (!title) title = '视频 ' + (results.length + 1);
 
+        // ---- 时长 ----
         var duration = '';
         var durM = nearby.match(/<span[^>]*class="[^"]*(?:duration|time|badge)[^"]*"[^>]*>([^<]{1,20})<\/span>/i);
         if (durM) {
             var d = durM[1].trim();
+            // 只保留纯时长格式
             if (/^\d/.test(d) && /[:分钟分秒\dhms]/.test(d)) duration = d;
         }
 
@@ -145,6 +161,12 @@ function parseVideoList(html, base, limit) {
         if (results.length >= limit) break;
     }
 
+    log('parseVideoList: href总匹配=' + hrefCount + ' 去重后=' + results.length + ' 条');
+    if (results.length > 0) {
+        log('  第一条vod_id=' + results[0].vod_id);
+        log('  第一条vod_name=' + results[0].vod_name);
+        log('  第一条vod_pic=' + results[0].vod_pic);
+    }
     return results;
 }
 
@@ -157,33 +179,40 @@ function extractVideoUrls(html) {
         masterHls: '',
     };
 
+    // 要检查的 script 块
     var scriptRe = /<script[^>]*>([\s\S]*?)<\/script>/gi;
     var m;
     while ((m = scriptRe.exec(html)) !== null) {
         var text = m[1];
 
+        // 1. setVideoUrl series
         var sh = text.match(/setVideoUrl(?:High|Low)?\s*[=:]\s*["']([^"']+)["']/);
         if (sh && results.mp4Urls.indexOf(sh[1]) === -1) results.mp4Urls.push(sh[1]);
 
+        // 2. 对象属性 src/url/file
         var srcRe = /(?:src|url|file)\s*:\s*["']([^"']+\.(?:mp4|m3u8)[^"']*)["']/gi;
         var sm;
         while ((sm = srcRe.exec(text)) !== null) {
             var u = sm[1];
             if (u.indexOf('.m3u8') !== -1) {
                 if (results.hlsUrls.indexOf(u) === -1) results.hlsUrls.push(u);
+                // Master playlist (含 _TPL_)
                 if (u.indexOf('_TPL_') !== -1 && !results.masterHls) results.masterHls = u;
             } else if (u.indexOf('.mp4') !== -1) {
                 if (results.mp4Urls.indexOf(u) === -1) results.mp4Urls.push(u);
             }
         }
 
+        // 3. 全局 JS 变量 (xhVideoData / playerData / videoSources)
         var varNames = ['xhVideoData', 'playerData', 'videoConfig', 'videoSources',
                         'sources', 'hlsSources', 'mp4Sources'];
         for (var vi = 0; vi < varNames.length; vi++) {
             var vn = varNames[vi];
+            // 尝试 JSON.parse 或对象字面量
             var vRe = new RegExp(vn + '\\s*[=:]\\s*(\\{[\\s\\S]{10,2000}\\})\\s*[;,]', 'i');
             var vM = vRe.exec(text);
             if (vM) {
+                // 从JSON中提取URL字符串
                 var urlRe = /["']([^"']+\.(?:mp4|m3u8)[^"']*)["']/g;
                 var um;
                 while ((um = urlRe.exec(vM[1])) !== null) {
@@ -198,10 +227,12 @@ function extractVideoUrls(html) {
             }
         }
 
+        // 4. 直接裸 URL (CDN 链接)
         var rawRe = /(https?:\/\/[^"'\s<>]*xhcdn[^"'\s<>]*\.(?:mp4|m3u8)[^"'\s<>,\]]*)/gi;
         var rm;
         while ((rm = rawRe.exec(text)) !== null) {
             var ru = rm[1];
+            // 排除 thumb- / static- / ic-
             if (ru.indexOf('thumb-') !== -1 || ru.indexOf('static-') !== -1 || ru.indexOf('ic-') !== -1) continue;
             if (ru.indexOf('.m3u8') !== -1) {
                 if (results.hlsUrls.indexOf(ru) === -1) results.hlsUrls.push(ru);
@@ -211,6 +242,7 @@ function extractVideoUrls(html) {
         }
     }
 
+    // 5. 后备: HTML body 中的裸 URL
     if (results.hlsUrls.length === 0 && results.mp4Urls.length === 0) {
         var bodyRe = /(https?:\/\/[^"'\s<>]*xhcdn[^"'\s<>]*\.(?:mp4|m3u8)[^"'\s<>,\]]*)/gi;
         var bm;
@@ -225,17 +257,23 @@ function extractVideoUrls(html) {
         }
     }
 
+    // 过滤: 排除可疑URL
     results.mp4Urls = results.mp4Urls.filter(function(u) {
         return u.indexOf('preview') === -1 && u.indexOf('thumb') === -1 && u.indexOf('sprite') === -1;
     });
 
+    // 去重 HLS: 优先保留 _TPL_ master 和其它非 _TPL_ 的
+    // 但数量限制在 3 条以内
     if (results.masterHls) {
+        // 如果有 master playlist，只保留它
         results.hlsUrls = [results.masterHls];
     } else {
+        // 去重后取最多3条
         var deduped = [];
         for (var hi = 0; hi < results.hlsUrls.length; hi++) {
             if (deduped.indexOf(results.hlsUrls[hi]) === -1) deduped.push(results.hlsUrls[hi]);
         }
+        // 优先保留最高清晰度
         var qOrder = ['1080p', '720p', '480p', '240p', '144p'];
         var sorted = [];
         for (var qi = 0; qi < qOrder.length; qi++) {
@@ -245,6 +283,7 @@ function extractVideoUrls(html) {
                 }
             }
         }
+        // 把未匹配清晰度的也加上
         for (var hi = 0; hi < deduped.length; hi++) {
             if (sorted.indexOf(deduped[hi]) === -1) sorted.push(deduped[hi]);
         }
@@ -277,6 +316,7 @@ async function homeVod() {
     try {
         var base = getBaseUrl();
         var allList = [];
+        // 从最新和最受欢迎页取前几页的视频
         var pages = ['/newest/1', '/popular/1'];
         for (var pi = 0; pi < pages.length; pi++) {
             try {
@@ -316,6 +356,17 @@ async function category(tid, pg, filter, extend) {
         var resp = await req(url, { headers: makeHeaders(), method: 'get', timeout: 15000 });
         var html = resp.content || '';
 
+        log('category: tid=' + tid + ' pg=' + pg + ' url=' + url + ' html.length=' + html.length);
+        if (html.length > 0) {
+            log('  html前200=' + html.substring(0, 200).replace(/\n/g, ' '));
+            if (html.indexOf('cloudflare') !== -1 || html.indexOf('Cloudflare') !== -1 || html.indexOf('challenge') !== -1) {
+                log('  WARNING: Cloudflare challenge detected!');
+            }
+            if (html.indexOf('Just a moment') !== -1) {
+                log('  WARNING: Cloudflare "Just a moment" detected!');
+            }
+        }
+
         var totalPages = 1;
         var pgRe = /<a[^>]*href=["'][^"']*\/?(\d+)["'][^>]*>(\d+)<\/a>/gi;
         var maxPg = 0;
@@ -343,6 +394,7 @@ async function detail(id) {
         var resp = await req(url, { headers: makeHeaders(), method: 'get', timeout: 20000 });
         var html = resp.content || '';
 
+        // ---- 提取元数据 ----
         var title = '';
         var pic = '';
 
@@ -367,8 +419,14 @@ async function detail(id) {
             vod_content: desc || '',
         };
 
+        // ---- 提取视频直链 ----
         var urls = extractVideoUrls(html);
 
+        log('detail: title="' + title + '" html.length=' + html.length + ' hlsUrls=' + urls.hlsUrls.length + ' mp4Urls=' + urls.mp4Urls.length);
+        if (urls.hlsUrls.length > 0) log('  hls[0]=' + urls.hlsUrls[0]);
+        if (urls.mp4Urls.length > 0) log('  mp4[0]=' + urls.mp4Urls[0]);
+
+        // HLS 优先 (TVBox 的播放器基于 ExoPlayer 支持 HLS)
         if (urls.hlsUrls.length > 0) {
             var playFrom = [];
             var playUrl = [];
