@@ -58,6 +58,8 @@ function parseVideoList(html, base, limit) {
     if (hrefs.length === 0) {
         console.log('[parseVideoList] HTML头部(前1500字): ' + html.substring(0, 1500).replace(/\n/g, ' ').replace(/\s+/g, ' '));
         console.log('[parseVideoList] HTML中部(5000-7000字): ' + html.substring(5000, 7000).replace(/\n/g, ' ').replace(/\s+/g, ' '));
+        console.log('[parseVideoList] HTML中部2(10000-12000字): ' + html.substring(10000, 12000).replace(/\n/g, ' ').replace(/\s+/g, ' '));
+        console.log('[parseVideoList] HTML中部3(30000-32000字): ' + html.substring(30000, 32000).replace(/\n/g, ' ').replace(/\s+/g, ' '));
         // 搜索所有可能的 video 相关 href 模式
         const altLinks = html.match(/href=["'](\/?(?:red\/)?video[^"'\s]*)["']/gi);
         if (altLinks) {
@@ -66,12 +68,20 @@ function parseVideoList(html, base, limit) {
         // 搜索JSON视频数据
         const jsonData = html.match(/"video_id"\s*:\s*"[^"]+"/g);
         if (jsonData) console.log('[parseVideoList] JSON video_id: ' + jsonData.slice(0, 10).join(' | '));
+        const jsonData2 = html.match(/"id"\s*:\s*"\d{6,}"/g);
+        if (jsonData2) console.log('[parseVideoList] JSON id(6位+): ' + [...new Set(jsonData2)].slice(0, 10).join(' | '));
         // 搜索时间格式(hh:mm)可能表示时长
         const timeVals = html.match(/\b\d{1,2}:\d{2}\b/g);
         if (timeVals) console.log('[parseVideoList] 时间值: ' + [...new Set(timeVals)].slice(0, 20).join(' | '));
         // 搜索thumb/preview类容器
         const containers = html.match(/class=["'][^"']*(?:thumb|video|preview)[^"']*["']/gi);
-        if (containers) console.log('[parseVideoList] 容器类: ' + [...new Set(containers)].slice(0, 20).join(' | '));
+        if (containers) console.log('[parseVideoList] 容器类: ' + [...new Set(containers)].slice(0, 30).join(' | '));
+        // 搜索JS数组/变量中可能包含的视频数据
+        const jsVideos = html.match(/videos\s*:\s*\[[^\]]+\]/g);
+        if (jsVideos) console.log('[parseVideoList] JS videos数组: ' + jsVideos.slice(0, 3).map(v => v.substring(0, 200)).join(' ||| '));
+        // 搜索script标签中的JSON数据
+        const scriptJson = html.match(/window\.__INITIAL_STATE__\s*=\s*\{[^}]+\}/g);
+        if (scriptJson) console.log('[parseVideoList] __INITIAL_STATE__: ' + scriptJson[0].substring(0, 300));
     }
 
     // 第2步: 按顺序收集页面上所有有效图片URL
@@ -153,7 +163,8 @@ async function home() {
         class: [
             { type_id: '/new/1', type_name: '最新视频' },
             { type_id: '/best/1', type_name: '最受欢迎' },
-            { type_id: 'https://www.xvideos.red/red/videos?sxcaf=4353LFJE75&xsc=mct', type_name: 'VIP视频(ren)' },
+            { type_id: 'https://www.xvideos.red/red/videos?sxcaf=4353LFJE75&xsc=mct', type_name: 'VIP(首页)' },
+            { type_id: 'https://www.xvideos.red/red/videos/1', type_name: 'VIP(分类1)' },
         ],
         filters: {},
     });
