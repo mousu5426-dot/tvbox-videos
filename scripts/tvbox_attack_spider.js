@@ -53,7 +53,7 @@ const TVBOX_HEADERS_TEMPLATES = [
     },
     {
         "User-Agent": "Mozilla/5.0 (Linux; Android 9; V2196A) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Mobile Safari/537.36;tvbox/1.0",
-        "Referer": "http://127.0.0.1:8080/",
+        "Referer": "https://www.xvideos.com/",
         "Accept-Encoding": "gzip, deflate",
     },
 ];
@@ -78,7 +78,7 @@ function getExt() {
 
 function getBaseUrl() {
     const cfg = getExt();
-    return cfg.base_url || "http://127.0.0.1:8080";
+    return cfg.base_url || "https://www.xvideos.com";
 }
 
 function cleanTitle(title) {
