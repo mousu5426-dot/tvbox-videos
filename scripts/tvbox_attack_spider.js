@@ -14,7 +14,7 @@ const TVBOX_UA = [
 let HOST = 'https://www.xvideos.com';
 let siteKey = '';
 let siteType = 0;
-let CAT_BASE = '';
+let CAT_BASE = ''; // 当前分类的base URL (支持跨域)
 
 function getExt() { try { return typeof ext !== 'undefined' ? ext : {}; } catch (e) { return {}; } }
 function getBaseUrl() { const cfg = getExt(); return cfg.base_url || HOST; }
@@ -35,12 +35,46 @@ function sanitizeUrl(url) {
     return url;
 }
 
+// 从URL slug提取标题 (针对"最受欢迎"页面无title属性的情况)
+function urlToTitle(vodId) {
+    try {
+        if (!vodId) return '';
+        const parts = vodId.split('/');
+        if (parts.length < 3) return '';
+        const slug = decodeURIComponent(parts.slice(2).join('/'));
+        let t = slug.replace(/[_-]/g, ' ');
+        t = t.replace(/\s+/g, ' ').trim();
+        if (/^\d{3,4}p$|^4K$|^HD$/i.test(t)) return '';
+        if (t.length < 3) return '';
+        // 首字母大写
+        return t.charAt(0).toUpperCase() + t.slice(1);
+    } catch (e) { return ''; }
+}
+
+// 从文本中提取时长 (如 "12分钟", "10min", "1h 30min")
+function extractDuration(text) {
+    if (!text) return '';
+    const m = text.match(/(\d+)\s*(?:分钟|min|分)\s*(?:\d+\s*秒)?/i);
+    if (m) return m[1] + '分钟';
+    const m2 = text.match(/(\d+):(\d{2})/);
+    if (m2) return m2[1] + ':' + m2[2];
+    return '';
+}
+
 function makeImgUrl(img, base) {
     if (!img) return '';
     img = sanitizeUrl(img);
     if (img.startsWith('//')) return 'https:' + img;
     if (!img.startsWith('http')) return base + (img.startsWith('/') ? img : '/' + img);
     return img;
+}
+
+function extractImgUrl(html) {
+    const ds = html.match(/data-src\s*=\s*"([^"]*)"/);
+    if (ds && ds[1] && !ds[1].includes('blank.gif') && !ds[1].includes('data:image') && ds[1] !== '') return ds[1];
+    const src = html.match(/src\s*=\s*"([^"]*)"/);
+    if (src && src[1] && !src[1].includes('blank.gif') && !src[1].includes('data:image') && src[1] !== '') return src[1];
+    return '';
 }
 
 function parseVideoList(html, base, limit) {
@@ -53,6 +87,7 @@ function parseVideoList(html, base, limit) {
     let m;
     while ((m = blockRe.exec(html)) !== null) {
         const inner = m[1].trim();
+        // 只保留有 video 链接的块
         if (inner && inner.match(new RegExp('/video[^"\'\\s]*', 'i'))) {
             blocks.push(inner);
         }
@@ -88,8 +123,10 @@ function parseVideoList(html, base, limit) {
         const hrefM = block.match(new RegExp('href=' + q + '(\\/video[^"\'\\s]*)' + q, 'i'));
         if (!hrefM) continue;
         const href = hrefM[1];
+        // 去重
         if (hrefList.some(h => h === href)) continue;
 
+        // 提取图片 (data-src优先)
         let imgUrl = '';
         const ds = block.match(new RegExp('<img[^>]*data-src=' + q + '([^"\'<]*)' + q, 'i'));
         if (ds && !ds[1].includes('blank.gif') && !ds[1].includes('data:image')) {
@@ -107,29 +144,55 @@ function parseVideoList(html, base, limit) {
     console.log('[parseVideoList] 块提取: ' + hrefList.length + ' href, ' + imgList.filter(i => i).length + ' img');
 
     // ---- 第2部分: 全局提取标题和时长 ----
+    // 标题: 按 href 建立映射
     const titleByHref = {};
     let tc = 0;
+    // 清晰度标签过滤
+    const qualRe = /^\d{3,4}p$|^4K$|^HD$/i;
     // 方式A: <a href="/video.xxx" title="标题">
     const tA = new RegExp('<a\\s+href=' + q + '(\\/video[^"\'\\s]*)' + q + '[^>]*title=' + q + '([^"\'<]*)' + q, 'gi');
     while ((m = tA.exec(html)) !== null) {
         if (!titleByHref[m[1]]) { titleByHref[m[1]] = clean(m[2]); tc++; }
     }
-    // 方式B: 从 <a href="/video.xxx">文本</a> 提取
+    // 方式B: <a href="/video.xxx">文本</a> (跳过img和清晰度标签)
     const tB = /<a[^>]*href=["'](\/video[^"\'\s]*)["'][^>]*>([\s\S]*?)<\/a>/gi;
     while ((m = tB.exec(html)) !== null) {
         if (!titleByHref[m[1]]) {
             const txt = m[2].replace(/<[^>]+>/g, '').trim();
-            if (txt) { titleByHref[m[1]] = clean(txt); tc++; }
+            if (txt && !qualRe.test(txt)) { titleByHref[m[1]] = clean(txt); tc++; }
+        }
+    }
+    // 方式C: URL slug后备 (针对best页面无标题文本)
+    for (const href of hrefList) {
+        if (!titleByHref[href]) {
+            const slugT = urlToTitle(href);
+            if (slugT) { titleByHref[href] = slugT; tc++; }
         }
     }
     console.log('[parseVideoList] 全局标题: ' + tc + ' 个');
 
+    // 时长: 按出现顺序收集
     const durations = [];
+    // 方式A: <span class="duration">10min</span>
     const durRe = /<span[^>]*class="duration"[^>]*>([^<]*)<\/span>/gi;
     while ((m = durRe.exec(html)) !== null) {
-        durations.push(m[1].trim());
+        const d = m[1].trim();
+        durations.push(d);
     }
-    console.log('[parseVideoList] 全局时长: ' + durations.length + ' 个');
+    console.log('[parseVideoList] span时长: ' + durations.length + ' 个');
+    // 方式B: 页面上找文本时长 (格式: "10分钟", "12min") 作为后备
+    if (durations.length === 0) {
+        const textDurRe = /(\d{1,3})\s*(?:分钟|min|分)/gi;
+        const textDurs = [];
+        while ((m = textDurRe.exec(html)) !== null) {
+            textDurs.push(m[1] + '分钟');
+        }
+        console.log('[parseVideoList] 文本时长: ' + textDurs.length + ' 个');
+        // 按顺序填充
+        for (let i = 0; i < textDurs.length && durations.length < hrefList.length; i++) {
+            durations.push(textDurs[i]);
+        }
+    }
 
     // ---- 第3部分: 合并结果 ----
     const list = [];
@@ -174,6 +237,7 @@ async function homeVod() {
     try {
         const base = getBaseUrl();
         const allList = [];
+        // 获取最新视频前2页和新/旧混合
         const pages = ['/new/1', '/new/2', '/best/1'];
         for (const p of pages) {
             try {
@@ -204,6 +268,7 @@ async function category(tid, pg, filter, extend) {
     try {
         let url, catBase;
         if (tid.startsWith('http')) {
+            // 绝对URL: 直接使用, 用 &p= 分页
             const sep = tid.includes('?') ? '&' : '?';
             url = tid + (pg > 1 ? sep + 'p=' + pg : '');
             const m = tid.match(/^https?:\/\/[^\/]+/);
@@ -253,6 +318,7 @@ async function detail(id) {
 
         const vod = { vod_id: id, vod_name: title || '视频', vod_pic: pic || '', vod_content: desc || '' };
 
+        // 提取 setVideoUrlHigh/Low
         let highUrl = '', lowUrl = '';
         const scriptRe = /<script[^>]*>([\s\S]*?)<\/script>/gi;
         let m;
