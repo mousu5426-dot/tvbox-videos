@@ -27,7 +27,6 @@ function clean(s) {
 
 function sanitizeUrl(url) {
     if (!url) return url;
-    // 替换 THUMBNUM 占位符为有效数字（参考 Python 版 _sanitize_url）
     url = url.replace('THUMBNUM', '0');
     url = url.replace(/\{catePg\}/g, '1');
     url = url.replace(/\{pg\}/g, '1');
@@ -55,26 +54,51 @@ function parseVideoList(html, base, limit) {
     limit = limit || 40;
     const entries = [];
 
+    // 调试: 统计所有 video 链接
+    const allLinks = html.match(/<a\s+href="\/video[^"]*"/gi);
+    console.log('[parseVideoList] 页面中 video 链接总数: ' + (allLinks ? allLinks.length : 0));
+
     // 第1轮: 缩略图
     const thumbRe = /<a\s+href="(\/video[^"]*)"[^>]*>([\s\S]*?)<\/a>/gi;
     let m;
+    let matchCount = 0;
     while ((m = thumbRe.exec(html)) !== null) {
+        matchCount++;
         const href = m[1];
         const inner = m[2];
+        if (matchCount <= 3) {
+            console.log('[parseVideoList] 匹配#' + matchCount + ' href=' + href + ' inner前100=' + inner.substring(0, 100).replace(/\n/g, ' '));
+        }
         const img = extractImgUrl(inner);
-        if (!img) continue;
+        if (!img) {
+            if (matchCount <= 3) console.log('[parseVideoList] 匹配#' + matchCount + ' 未找到图片');
+            continue;
+        }
         if (entries.some(e => e.vid === href)) continue;
         entries.push({ vid: href, pic: makeImgUrl(img, base) });
     }
-    console.log('[parseVideoList] 缩略图匹配: ' + entries.length + ' 个');
+    console.log('[parseVideoList] 缩略图匹配: ' + entries.length + ' 个 (共尝试' + matchCount + '个链接)');
+    if (entries.length === 0 && allLinks && allLinks.length > 0) {
+        const firstLinkPos = html.indexOf('/video');
+        if (firstLinkPos > 0) {
+            console.log('[parseVideoList] 首个video链接周围HTML: ' + html.substring(Math.max(0, firstLinkPos - 200), firstLinkPos + 200).replace(/\n/g, ' '));
+        }
+    }
 
-    // 第2轮: 标题
-    const titleRe = /<p[^>]*class="title"[^>]*>[\s\S]*?<a\s+href="(\/video[^"]*)"[^>]*(?:title="([^"]*)")?[^>]*>([\s\S]*?)<\/a>/gi;
+    // 第2轮: 标题 - 支持多种结构
     const titleMap = {};
     let titleCount = 0;
+    // 方式1: <p class="title"> 结构
+    const titleRe = /<p[^>]*class="title"[^>]*>[\s\S]*?<a\s+href="(\/video[^"]*)"[^>]*(?:title="([^"]*)")?[^>]*>([\s\S]*?)<\/a>/gi;
     while ((m = titleRe.exec(html)) !== null) {
         const name = clean(m[2] || (m[3] || '').replace(/<[^>]+>/g, ''));
         if (m[1] && name) { titleMap[m[1]] = name; titleCount++; }
+    }
+    // 方式2: 直接找 a[href^="/video"] 带 title 属性的
+    const titleRe2 = /<a\s+href="(\/video[^"]*)"[^>]+title="([^"]*)"[^>]*>/gi;
+    while ((m = titleRe2.exec(html)) !== null) {
+        const name = clean(m[2]);
+        if (m[1] && name && !titleMap[m[1]]) { titleMap[m[1]] = name; titleCount++; }
     }
     console.log('[parseVideoList] 标题匹配: ' + titleCount + ' 个');
 
