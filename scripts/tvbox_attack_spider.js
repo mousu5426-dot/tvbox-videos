@@ -47,81 +47,103 @@ function parseVideoList(html, base, limit) {
     limit = limit || 40;
     const q = '["\']';
 
-    // 查找所有 thumb-block 容器，每个容器内独立提取
-    const blockRe = /<div[^>]*class="[^"]*thumb-block[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>/gi;
+    // ---- 第1部分: 按容器块提取 href + img (保证封面统一) ----
+    const blockRe = /<div[^>]*class="[^"]*thumb-block[^"]*"[^>]*>([\s\S]*?)<\/div>\s*(?:<\/div>)?/gi;
     const blocks = [];
     let m;
     while ((m = blockRe.exec(html)) !== null) {
-        blocks.push(m[1]);
+        const inner = m[1].trim();
+        if (inner && inner.match(new RegExp('/video[^"\'\\s]*', 'i'))) {
+            blocks.push(inner);
+        }
     }
     console.log('[parseVideoList] thumb-block数: ' + blocks.length);
 
-    // 后备: 其他容器
+    // 后备容器
     if (blocks.length === 0) {
-        const artRe = /<article[^>]*>([\s\S]*?)<\/article>/gi;
-        while ((m = artRe.exec(html)) !== null) blocks.push(m[1]);
-        console.log('[parseVideoList] article容器数: ' + blocks.length);
-    }
-    if (blocks.length === 0) {
-        const vtRe = /<div[^>]*class="[^"]*video[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>/gi;
-        while ((m = vtRe.exec(html)) !== null) {
-            if (m[1].includes('/video') && m[1].includes('<img')) blocks.push(m[1]);
+        const fallbacks = [
+            { re: /<article[^>]*>([\s\S]*?)<\/article>/gi, name: 'article' },
+            { re: /<div[^>]*class="[^"]*video-[^"]*"[^>]*>([\s\S]*?)<\/div>/gi, name: 'video-' },
+        ];
+        for (const fb of fallbacks) {
+            while ((m = fb.re.exec(html)) !== null) {
+                if (m[1].match(new RegExp('/video[^"\'\\s]*', 'i')) && m[1].includes('<img')) {
+                    blocks.push(m[1]);
+                }
+            }
+            if (blocks.length > 0) {
+                console.log('[parseVideoList] 用' + fb.name + '后备: ' + blocks.length + ' 块');
+                break;
+            }
         }
-        console.log('[parseVideoList] video类容器数: ' + blocks.length);
     }
     if (blocks.length === 0) {
         console.log('[parseVideoList] 无容器! HTML(0-1500): ' + html.substring(0, 1500).replace(/\n/g, ' ').replace(/\s+/g, ' '));
     }
 
-    const list = [];
-    for (let bi = 0; bi < blocks.length && list.length < limit; bi++) {
-        const block = blocks[bi];
+    // 从块中提取 href 和 img (一一对应)
+    const hrefList = [];
+    const imgList = [];
+    for (const block of blocks) {
+        const hrefM = block.match(new RegExp('href=' + q + '(\\/video[^"\'\\s]*)' + q, 'i'));
+        if (!hrefM) continue;
+        const href = hrefM[1];
+        if (hrefList.some(h => h === href)) continue;
 
-        // 提取 href
-        const hrefRe = new RegExp('href=' + q + '(\\/video[^"\'\\s]*)' + q, 'i');
-        const hrefMatch = block.match(hrefRe);
-        if (!hrefMatch) continue;
-        const href = hrefMatch[1];
-
-        // 提取 img (data-src优先)
-        const dataImgRe = new RegExp('<img[^>]*data-src=' + q + '([^"\'<]*)' + q, 'i');
-        const imgRe = new RegExp('<img[^>]*src=' + q + '([^"\'<]*)' + q, 'i');
         let imgUrl = '';
-        const dataMatch = block.match(dataImgRe);
-        if (dataMatch && !dataMatch[1].includes('blank.gif') && !dataMatch[1].includes('data:image')) {
-            imgUrl = dataMatch[1];
+        const ds = block.match(new RegExp('<img[^>]*data-src=' + q + '([^"\'<]*)' + q, 'i'));
+        if (ds && !ds[1].includes('blank.gif') && !ds[1].includes('data:image')) {
+            imgUrl = ds[1];
         } else {
-            const imgMatch = block.match(imgRe);
-            if (imgMatch && !imgMatch[1].includes('blank.gif') && !imgMatch[1].includes('data:image') && !imgMatch[1].includes('/assets/')) {
-                imgUrl = imgMatch[1];
+            const s = block.match(new RegExp('<img[^>]*src=' + q + '([^"\'<]*)' + q, 'i'));
+            if (s && !s[1].includes('blank.gif') && !s[1].includes('data:image') && !s[1].includes('/assets/')) {
+                imgUrl = s[1];
             }
         }
-        const pic = imgUrl ? makeImgUrl(imgUrl, base) : '';
 
-        // 提取标题
-        const titleRe = new RegExp('title=' + q + '([^"\'<]*)' + q, 'i');
-        const titleMatch = block.match(titleRe);
-        let name = titleMatch ? clean(titleMatch[1]) : '';
-        if (!name) {
-            const textRe = new RegExp('<a\\s+href=' + q + '\\/video[^"\'\\s]*' + q + '[^>]*>([\\s\\S]*?)<\\/a>', 'i');
-            const textMatch = block.match(textRe);
-            if (textMatch) name = clean(textMatch[1].replace(/<[^>]+>/g, ''));
+        hrefList.push(href);
+        imgList.push(imgUrl);
+    }
+    console.log('[parseVideoList] 块提取: ' + hrefList.length + ' href, ' + imgList.filter(i => i).length + ' img');
+
+    // ---- 第2部分: 全局提取标题和时长 ----
+    const titleByHref = {};
+    let tc = 0;
+    // 方式A: <a href="/video.xxx" title="标题">
+    const tA = new RegExp('<a\\s+href=' + q + '(\\/video[^"\'\\s]*)' + q + '[^>]*title=' + q + '([^"\'<]*)' + q, 'gi');
+    while ((m = tA.exec(html)) !== null) {
+        if (!titleByHref[m[1]]) { titleByHref[m[1]] = clean(m[2]); tc++; }
+    }
+    // 方式B: 从 <a href="/video.xxx">文本</a> 提取
+    const tB = /<a[^>]*href=["'](\/video[^"\'\s]*)["'][^>]*>([\s\S]*?)<\/a>/gi;
+    while ((m = tB.exec(html)) !== null) {
+        if (!titleByHref[m[1]]) {
+            const txt = m[2].replace(/<[^>]+>/g, '').trim();
+            if (txt) { titleByHref[m[1]] = clean(txt); tc++; }
         }
+    }
+    console.log('[parseVideoList] 全局标题: ' + tc + ' 个');
 
-        // 提取时长
-        const durRe = /<span[^>]*class="duration"[^>]*>([^<]*)<\/span>/i;
-        const durMatch = block.match(durRe);
-        const duration = durMatch ? durMatch[1].trim() : '';
+    const durations = [];
+    const durRe = /<span[^>]*class="duration"[^>]*>([^<]*)<\/span>/gi;
+    while ((m = durRe.exec(html)) !== null) {
+        durations.push(m[1].trim());
+    }
+    console.log('[parseVideoList] 全局时长: ' + durations.length + ' 个');
 
+    // ---- 第3部分: 合并结果 ----
+    const list = [];
+    for (let i = 0; i < hrefList.length && list.length < limit; i++) {
+        const href = hrefList[i];
+        const pic = imgList[i] ? makeImgUrl(imgList[i], base) : '';
         list.push({
             vod_id: href,
-            vod_name: name || '',
+            vod_name: titleByHref[href] || '',
             vod_pic: pic,
-            vod_remarks: duration,
+            vod_remarks: durations[i] || '',
         });
-
         if (list.length <= 3) {
-            console.log('[parseVideoList] 块' + bi + ': ' + name + ' | ' + pic + ' | ' + duration);
+            console.log('[parseVideoList] 视频' + i + ': ' + (titleByHref[href] || '无标题') + ' | ' + (durations[i] || ''));
         }
     }
     console.log('[parseVideoList] 最终列表: ' + list.length + ' 个 (限制: ' + limit + ')');
