@@ -52,70 +52,64 @@ function extractImgUrl(html) {
 
 function parseVideoList(html, base, limit) {
     limit = limit || 40;
-    const entries = [];
 
-    // 调试: 统计所有 video 链接
-    const allLinks = html.match(/<a\s+href="\/video[^"]*"/gi);
-    console.log('[parseVideoList] 页面中 video 链接总数: ' + (allLinks ? allLinks.length : 0));
-
-    // 第1轮: 缩略图
-    const thumbRe = /<a\s+href="(\/video[^"]*)"[^>]*>([\s\S]*?)<\/a>/gi;
+    // 第1步: 按顺序收集所有 video 链接的 href
+    const hrefRe = /<a\s+href="(\/video[^"]*)"[^>]*>/gi;
+    const hrefs = [];
     let m;
-    let matchCount = 0;
-    while ((m = thumbRe.exec(html)) !== null) {
-        matchCount++;
-        const href = m[1];
-        const inner = m[2];
-        if (matchCount <= 3) {
-            console.log('[parseVideoList] 匹配#' + matchCount + ' href=' + href + ' inner前100=' + inner.substring(0, 100).replace(/\n/g, ' '));
-        }
-        const img = extractImgUrl(inner);
-        if (!img) {
-            if (matchCount <= 3) console.log('[parseVideoList] 匹配#' + matchCount + ' 未找到图片');
-            continue;
-        }
-        if (entries.some(e => e.vid === href)) continue;
-        entries.push({ vid: href, pic: makeImgUrl(img, base) });
+    while ((m = hrefRe.exec(html)) !== null) {
+        if (!hrefs.some(h => h === m[1])) hrefs.push(m[1]);
     }
-    console.log('[parseVideoList] 缩略图匹配: ' + entries.length + ' 个 (共尝试' + matchCount + '个链接)');
-    if (entries.length === 0 && allLinks && allLinks.length > 0) {
-        const firstLinkPos = html.indexOf('/video');
-        if (firstLinkPos > 0) {
-            console.log('[parseVideoList] 首个video链接周围HTML: ' + html.substring(Math.max(0, firstLinkPos - 200), firstLinkPos + 200).replace(/\n/g, ' '));
-        }
-    }
+    console.log('[parseVideoList] video链接数: ' + hrefs.length);
 
-    // 第2轮: 标题 - 支持多种结构
+    // 第2步: 按顺序收集页面上所有有效图片URL
+    const imgRe = /<img[^>]*(?:data-src|src)\s*=\s*"([^"]*)"[^>]*>/gi;
+    const allImgs = [];
+    while ((m = imgRe.exec(html)) !== null) {
+        const url = m[1];
+        if (url && !url.includes('blank.gif') && !url.includes('data:image') && !url.includes('/assets/')) {
+            allImgs.push(url);
+        }
+    }
+    console.log('[parseVideoList] 有效图片数: ' + allImgs.length);
+
+    // 第3步: 收集标题 - 多种方式
     const titleMap = {};
     let titleCount = 0;
-    // 方式1: <p class="title"> 结构
-    const titleRe = /<p[^>]*class="title"[^>]*>[\s\S]*?<a\s+href="(\/video[^"]*)"[^>]*(?:title="([^"]*)")?[^>]*>([\s\S]*?)<\/a>/gi;
-    while ((m = titleRe.exec(html)) !== null) {
-        const name = clean(m[2] || (m[3] || '').replace(/<[^>]+>/g, ''));
-        if (m[1] && name) { titleMap[m[1]] = name; titleCount++; }
-    }
-    // 方式2: 直接找 a[href^="/video"] 带 title 属性的
-    const titleRe2 = /<a\s+href="(\/video[^"]*)"[^>]+title="([^"]*)"[^>]*>/gi;
-    while ((m = titleRe2.exec(html)) !== null) {
+    // 方式A: a[href^="/video"][title]
+    const titleReA = /<a\s+href="(\/video[^"]*)"[^>]*title="([^"]*)"[^>]*>/gi;
+    while ((m = titleReA.exec(html)) !== null) {
         const name = clean(m[2]);
         if (m[1] && name && !titleMap[m[1]]) { titleMap[m[1]] = name; titleCount++; }
     }
-    console.log('[parseVideoList] 标题匹配: ' + titleCount + ' 个');
+    // 方式B: <p class="title"> 内找 a[href^="/video"]
+    const titleReB = /<p[^>]*class="title"[^>]*>([\s\S]*?)<\/p>/gi;
+    while ((m = titleReB.exec(html)) !== null) {
+        const pHtml = m[1];
+        const aMatch = pHtml.match(/<a\s+href="(\/video[^"]*)"[^>]*>([\s\S]*?)<\/a>/i);
+        if (aMatch) {
+            const href = aMatch[1];
+            const name = clean(aMatch[2].replace(/<[^>]+>/g, ''));
+            if (href && name && !titleMap[href]) { titleMap[href] = name; titleCount++; }
+        }
+    }
+    console.log('[parseVideoList] 标题数: ' + titleCount);
 
-    // 第3轮: 时长
+    // 第4步: 收集时长
     const durRe = /<span\s+class="duration"[^>]*>([^<]*)<\/span>/gi;
     const durations = [];
     while ((m = durRe.exec(html)) !== null) { durations.push(m[1].trim()); }
-    console.log('[parseVideoList] 时长匹配: ' + durations.length + ' 个');
+    console.log('[parseVideoList] 时长数: ' + durations.length);
 
-    // 合并
+    // 第5步: 合并 - 按顺序配对
     const list = [];
-    for (let i = 0; i < entries.length && list.length < limit; i++) {
-        const e = entries[i];
+    for (let i = 0; i < hrefs.length && list.length < limit; i++) {
+        const href = hrefs[i];
+        const pic = i < allImgs.length ? makeImgUrl(allImgs[i], base) : '';
         list.push({
-            vod_id: e.vid,
-            vod_name: titleMap[e.vid] || '',
-            vod_pic: e.pic,
+            vod_id: href,
+            vod_name: titleMap[href] || '',
+            vod_pic: pic,
             vod_remarks: durations[i] || '',
         });
     }
