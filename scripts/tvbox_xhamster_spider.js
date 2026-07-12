@@ -179,60 +179,68 @@ function extractVideoUrls(html) {
         masterHls: '',
     };
 
-    // 要检查的 script 块
+    // ---- 模式A: <link rel="preload" as="fetch" href="..."> (HLS Master, xHamster新版)
+    var linkRe = /<link[^>]*rel="preload"[^>]*as="fetch"[^>]*href="([^"]*\.m3u8[^"]*)"/gi;
+    var lm;
+    while ((lm = linkRe.exec(html)) !== null) {
+        var lu = lm[1];
+        if (results.hlsUrls.indexOf(lu) === -1) results.hlsUrls.push(lu);
+        if (lu.indexOf('_TPL_') !== -1 && !results.masterHls) results.masterHls = lu;
+    }
+
+    // ---- 模式B: <video src="..."> (MP4降级源)
+    var videoRe = /<video[^>]*src="([^"]*\.mp4[^"]*)"/gi;
+    var vm;
+    while ((vm = videoRe.exec(html)) !== null) {
+        var vu = vm[1];
+        if (vu.indexOf('thumb-') === -1 && vu.indexOf('preview') === -1 && vu.indexOf('sprite') === -1) {
+            if (results.mp4Urls.indexOf(vu) === -1) results.mp4Urls.push(vu);
+        }
+    }
+
+    // ---- 模式C: <source src="..."> 
+    var sourceRe = /<source[^>]*src="([^"]*\.(?:mp4|m3u8)[^"]*)"/gi;
+    var sm2;
+    while ((sm2 = sourceRe.exec(html)) !== null) {
+        var su = sm2[1];
+        if (su.indexOf('.m3u8') !== -1) {
+            if (results.hlsUrls.indexOf(su) === -1) results.hlsUrls.push(su);
+            if (su.indexOf('_TPL_') !== -1 && !results.masterHls) results.masterHls = su;
+        } else if (su.indexOf('.mp4') !== -1) {
+            if (su.indexOf('thumb-') === -1 && su.indexOf('preview') === -1) {
+                if (results.mp4Urls.indexOf(su) === -1) results.mp4Urls.push(su);
+            }
+        }
+    }
+
+    // ---- 模式D: <script> 块内的旧格式 (向后兼容) ----
     var scriptRe = /<script[^>]*>([\s\S]*?)<\/script>/gi;
     var m;
     while ((m = scriptRe.exec(html)) !== null) {
         var text = m[1];
 
-        // 1. setVideoUrl series
+        // D1: setVideoUrl series
         var sh = text.match(/setVideoUrl(?:High|Low)?\s*[=:]\s*["']([^"']+)["']/);
         if (sh && results.mp4Urls.indexOf(sh[1]) === -1) results.mp4Urls.push(sh[1]);
 
-        // 2. 对象属性 src/url/file
+        // D2: 对象属性 src/url/file
         var srcRe = /(?:src|url|file)\s*:\s*["']([^"']+\.(?:mp4|m3u8)[^"']*)["']/gi;
         var sm;
         while ((sm = srcRe.exec(text)) !== null) {
             var u = sm[1];
             if (u.indexOf('.m3u8') !== -1) {
                 if (results.hlsUrls.indexOf(u) === -1) results.hlsUrls.push(u);
-                // Master playlist (含 _TPL_)
                 if (u.indexOf('_TPL_') !== -1 && !results.masterHls) results.masterHls = u;
             } else if (u.indexOf('.mp4') !== -1) {
                 if (results.mp4Urls.indexOf(u) === -1) results.mp4Urls.push(u);
             }
         }
 
-        // 3. 全局 JS 变量 (xhVideoData / playerData / videoSources)
-        var varNames = ['xhVideoData', 'playerData', 'videoConfig', 'videoSources',
-                        'sources', 'hlsSources', 'mp4Sources'];
-        for (var vi = 0; vi < varNames.length; vi++) {
-            var vn = varNames[vi];
-            // 尝试 JSON.parse 或对象字面量
-            var vRe = new RegExp(vn + '\\s*[=:]\\s*(\\{[\\s\\S]{10,2000}\\})\\s*[;,]', 'i');
-            var vM = vRe.exec(text);
-            if (vM) {
-                // 从JSON中提取URL字符串
-                var urlRe = /["']([^"']+\.(?:mp4|m3u8)[^"']*)["']/g;
-                var um;
-                while ((um = urlRe.exec(vM[1])) !== null) {
-                    var vu = um[1];
-                    if (vu.indexOf('.m3u8') !== -1) {
-                        if (results.hlsUrls.indexOf(vu) === -1) results.hlsUrls.push(vu);
-                        if (vu.indexOf('_TPL_') !== -1 && !results.masterHls) results.masterHls = vu;
-                    } else if (vu.indexOf('.mp4') !== -1) {
-                        if (results.mp4Urls.indexOf(vu) === -1) results.mp4Urls.push(vu);
-                    }
-                }
-            }
-        }
-
-        // 4. 直接裸 URL (CDN 链接)
+        // D3: 直接裸 URL (CDN 链接) in script
         var rawRe = /(https?:\/\/[^"'\s<>]*xhcdn[^"'\s<>]*\.(?:mp4|m3u8)[^"'\s<>,\]]*)/gi;
         var rm;
         while ((rm = rawRe.exec(text)) !== null) {
             var ru = rm[1];
-            // 排除 thumb- / static- / ic-
             if (ru.indexOf('thumb-') !== -1 || ru.indexOf('static-') !== -1 || ru.indexOf('ic-') !== -1) continue;
             if (ru.indexOf('.m3u8') !== -1) {
                 if (results.hlsUrls.indexOf(ru) === -1) results.hlsUrls.push(ru);
@@ -242,7 +250,7 @@ function extractVideoUrls(html) {
         }
     }
 
-    // 5. 后备: HTML body 中的裸 URL
+    // ---- 模式E: HTML body 中裸 xhcdn URL (后备) ----
     if (results.hlsUrls.length === 0 && results.mp4Urls.length === 0) {
         var bodyRe = /(https?:\/\/[^"'\s<>]*xhcdn[^"'\s<>]*\.(?:mp4|m3u8)[^"'\s<>,\]]*)/gi;
         var bm;
@@ -262,13 +270,10 @@ function extractVideoUrls(html) {
         return u.indexOf('preview') === -1 && u.indexOf('thumb') === -1 && u.indexOf('sprite') === -1;
     });
 
-    // 去重 HLS: 优先保留 _TPL_ master 和其它非 _TPL_ 的
-    // 但数量限制在 3 条以内
+    // 去重 HLS: 优先保留 _TPL_ master
     if (results.masterHls) {
-        // 如果有 master playlist，只保留它
         results.hlsUrls = [results.masterHls];
     } else {
-        // 去重后取最多3条
         var deduped = [];
         for (var hi = 0; hi < results.hlsUrls.length; hi++) {
             if (deduped.indexOf(results.hlsUrls[hi]) === -1) deduped.push(results.hlsUrls[hi]);
@@ -283,7 +288,6 @@ function extractVideoUrls(html) {
                 }
             }
         }
-        // 把未匹配清晰度的也加上
         for (var hi = 0; hi < deduped.length; hi++) {
             if (sorted.indexOf(deduped[hi]) === -1) sorted.push(deduped[hi]);
         }
@@ -398,7 +402,7 @@ async function detail(id) {
         var title = '';
         var pic = '';
 
-        var t = html.match(/<title>([\s\S]*?)<\/title>/i);
+        var t = html.match(/<title\s*>([\s\S]*?)<\/title>/i);
         if (t) title = clean(t[1]).replace(/ - xHamster\..*$/i, '').replace(/ - xHamster$/i, '').trim();
 
         var og = html.match(/<meta\s+property="og:image"[^>]*content="([^"]*)"/i);
