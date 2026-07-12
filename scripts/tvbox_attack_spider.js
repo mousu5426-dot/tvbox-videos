@@ -56,7 +56,22 @@ function parseVideoList(html, base, limit) {
     }
     console.log('[parseVideoList] video链接数: ' + hrefs.length);
     if (hrefs.length === 0) {
-        console.log('[parseVideoList] HTML片段(前1500字): ' + html.substring(0, 1500).replace(/\n/g, ' ').replace(/\s+/g, ' '));
+        console.log('[parseVideoList] HTML头部(前1500字): ' + html.substring(0, 1500).replace(/\n/g, ' ').replace(/\s+/g, ' '));
+        console.log('[parseVideoList] HTML中部(5000-7000字): ' + html.substring(5000, 7000).replace(/\n/g, ' ').replace(/\s+/g, ' '));
+        // 搜索所有可能的 video 相关 href 模式
+        const altLinks = html.match(/href=["'](\/?(?:red\/)?video[^"'\s]*)["']/gi);
+        if (altLinks) {
+            console.log('[parseVideoList] 所有video相关链接: ' + altLinks.slice(0, 30).join(' | '));
+        }
+        // 搜索JSON视频数据
+        const jsonData = html.match(/"video_id"\s*:\s*"[^"]+"/g);
+        if (jsonData) console.log('[parseVideoList] JSON video_id: ' + jsonData.slice(0, 10).join(' | '));
+        // 搜索时间格式(hh:mm)可能表示时长
+        const timeVals = html.match(/\b\d{1,2}:\d{2}\b/g);
+        if (timeVals) console.log('[parseVideoList] 时间值: ' + [...new Set(timeVals)].slice(0, 20).join(' | '));
+        // 搜索thumb/preview类容器
+        const containers = html.match(/class=["'][^"']*(?:thumb|video|preview)[^"']*["']/gi);
+        if (containers) console.log('[parseVideoList] 容器类: ' + [...new Set(containers)].slice(0, 20).join(' | '));
     }
 
     // 第2步: 按顺序收集页面上所有有效图片URL
@@ -173,7 +188,6 @@ async function category(tid, pg, filter, extend) {
     try {
         let url, catBase;
         if (tid.startsWith('http')) {
-            // 绝对URL: 直接使用, 用 &p= 分页
             const sep = tid.includes('?') ? '&' : '?';
             url = tid + (pg > 1 ? sep + 'p=' + pg : '');
             const m = tid.match(/^https?:\/\/[^\/]+/);
@@ -223,7 +237,6 @@ async function detail(id) {
 
         const vod = { vod_id: id, vod_name: title || '视频', vod_pic: pic || '', vod_content: desc || '' };
 
-        // 提取 setVideoUrlHigh/Low
         let highUrl = '', lowUrl = '';
         const scriptRe = /<script[^>]*>([\s\S]*?)<\/script>/gi;
         let m;
