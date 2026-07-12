@@ -163,7 +163,6 @@ async function home() {
         class: [
             { type_id: '/new/1', type_name: '最新视频' },
             { type_id: '/best/1', type_name: '最受欢迎' },
-            { type_id: 'https://www.xvideos.red/best-of-red/', type_name: 'VIP视频(ren)' },
         ],
         filters: {},
     });
@@ -174,17 +173,25 @@ async function homeVod() {
     CAT_BASE = '';
     try {
         const base = getBaseUrl();
-        const url = base + '/new/1';
-        console.log('[homeVod] 请求URL: ' + url);
-        const resp = await req(url, { headers: { 'User-Agent': randomUA() }, method: 'get' });
-        const html = resp.content || '';
-        console.log('[homeVod] 响应长度: ' + html.length + ' 字符');
-        if (html.length < 500) {
-            console.log('[homeVod] 警告: 响应太短, 可能被拦截');
+        const allList = [];
+        // 获取最新视频前2页和最受欢迎第1页
+        const pages = ['/new/1', '/new/2', '/best/1'];
+        for (const p of pages) {
+            try {
+                const url = base + p;
+                console.log('[homeVod] 请求: ' + url);
+                const resp = await req(url, { headers: { 'User-Agent': randomUA() }, method: 'get' });
+                const html = resp.content || '';
+                if (html.length < 500) continue;
+                const list = parseVideoList(html, base, 30);
+                allList.push.apply(allList, list);
+                console.log('[homeVod] ' + p + ' 获取 ' + list.length + ' 个');
+            } catch (e) {
+                console.log('[homeVod] ' + p + ' 失败: ' + (e.message || e));
+            }
         }
-        const list = parseVideoList(html, base, 40);
-        console.log('[homeVod] 返回列表: ' + list.length + ' 个视频');
-        return JSON.stringify({ list });
+        console.log('[homeVod] 总计: ' + allList.length + ' 个视频');
+        return JSON.stringify({ list: allList });
     } catch (e) {
         console.log('[homeVod] 错误: ' + (e.message || e));
         return JSON.stringify({ list: [] });
@@ -214,17 +221,6 @@ async function category(tid, pg, filter, extend) {
         const resp = await req(url, { headers: { 'User-Agent': randomUA() }, method: 'get' });
         const html = resp.content || '';
         console.log('[category] 响应长度: ' + html.length + ' 字符');
-        // 保存HTML到文件(用于RED页面分析)
-        if (tid.startsWith('http')) {
-            try {
-                var fw = new java.io.FileWriter('/data/local/tmp/red_page.html');
-                fw.write(html);
-                fw.close();
-                console.log('[category] HTML保存到 /data/local/tmp/red_page.html');
-            } catch (e) {
-                console.log('[category] 保存HTML失败: ' + e);
-            }
-        }
         const list = parseVideoList(html, catBase, 60);
         console.log('[category] 返回列表: ' + list.length + ' 个视频');
         return JSON.stringify({ page: pg, pagecount: 100, limit: 30, total: 3000, list });
