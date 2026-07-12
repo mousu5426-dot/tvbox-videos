@@ -56,33 +56,51 @@ async function home() {
     });
 }
 
+// 从 img 标签提取图片 URL（优先 data-src，后备 src）
+function getImgUrl(el) {
+    return el.attribs['data-src'] || el.attribs['data-thumb'] || el.attribs['src'] || '';
+}
+function makeImgUrl(img, base) {
+    if (!img) return '';
+    if (img.startsWith('//')) return 'https:' + img;
+    if (!img.startsWith('http')) return base + (img.startsWith('/') ? img : '/' + img);
+    return img;
+}
+
 async function homeVod() {
     try {
         const base = getBaseUrl();
-        const resp = await req(base + '/', { headers: { 'User-Agent': randomUA() } });
+        const resp = await req(base + '/', { headers: { 'User-Agent': randomUA() }, method: 'get' });
         const html = resp.content || '';
         const list = [];
 
-        const re = /<div\s+class="thumb-block[^"]*"[^>]*>[\s\S]*?<a\s+href="(\/video[^"]*)"[\s\S]*?<img[^>]*src="([^"]*)"[^>]*>[\s\S]*?(?:<p\s+class="title"[^>]*>([\s\S]*?)<\/p>)?[\s\S]*?(?:<span\s+class="duration">([^<]*)<\/span>)?/g;
+        // 匹配 thumb-block 块
+        const blockRe = /<div\s+class="thumb-block[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>\s*<\/div>/g;
         let m;
-        while ((m = re.exec(html)) !== null) {
-            const path = m[1];
-            let img = m[2] || '';
-            const title = clean(m[3] ? m[3].replace(/<[^>]+>/g, '') : '');
-            const dur = (m[4] || '').trim();
-            if (img && !img.startsWith('http')) img = base + (img.startsWith('/') ? img : '/' + img);
-            if (path && title) list.push({ vod_id: path, vod_name: title, vod_pic: img, vod_remarks: dur });
+        while ((m = blockRe.exec(html)) !== null) {
+            const block = m[1];
+            const a = block.match(/<a\s+href="(\/video[^"]*)"/);
+            if (!a) continue;
+            const img = block.match(/<img[^>]*?(?:data-src|data-thumb|src)="([^"]*)"/);
+            const titleMatch = block.match(/title="([^"]*)"/);
+            const durMatch = block.match(/class="duration">([^<]*)</);
+            const path = a[1];
+            let imgUrl = img ? img[1] : '';
+            const title = titleMatch ? clean(titleMatch[1]) : '';
+            const dur = durMatch ? durMatch[1].trim() : '';
+            imgUrl = makeImgUrl(imgUrl, base);
+            if (path && title) list.push({ vod_id: path, vod_name: title, vod_pic: imgUrl, vod_remarks: dur });
             if (list.length >= 40) break;
         }
 
+        // 后备：通用匹配
         if (list.length === 0) {
-            const re2 = /<a\s+href="(\/video[^"]*)"[^>]*>[\s\S]*?<img[^>]*src="([^"]*)"[^>]*>[\s\S]*?title="([^"]*)"[^>]*>/g;
+            const re2 = /<a\s+href="(\/video[^"]*)"[^>]*>[\s\S]*?<img[^>]*?(?:data-src|src)="([^"]*)"[^>]*>[\s\S]*?title="([^"]*)"[^>]*>/g;
             while ((m = re2.exec(html)) !== null) {
                 const path = m[1];
-                let img = m[2] || '';
+                const imgUrl = makeImgUrl(m[2] || '', base);
                 const title = clean(m[3]);
-                if (img && !img.startsWith('http')) img = base + (img.startsWith('/') ? img : '/' + img);
-                if (path && title) list.push({ vod_id: path, vod_name: title, vod_pic: img, vod_remarks: '' });
+                if (path && title) list.push({ vod_id: path, vod_name: title, vod_pic: imgUrl, vod_remarks: '' });
                 if (list.length >= 40) break;
             }
         }
@@ -93,42 +111,50 @@ async function homeVod() {
     }
 }
 
-async function category(tid, pg) {
+async function category(tid, pg, filter, extend) {
     pg = pg || 1;
     if (pg <= 0) pg = 1;
     try {
         const base = getBaseUrl();
         let url;
         if (tid === '/new/1' || tid === '/best/1' || tid === '/rated/1') {
-            url = base + tid.replace(/\/\d+$/, '') + '/' + pg;
+            const path = tid.replace(/\/\d+$/, '');
+            url = base + path + '/' + pg;
         } else {
             url = base + (tid.startsWith('/') ? tid : '/' + tid);
         }
-        const resp = await req(url, { headers: { 'User-Agent': randomUA() } });
+        const resp = await req(url, { headers: { 'User-Agent': randomUA() }, method: 'get' });
         const html = resp.content || '';
         const list = [];
 
-        const re = /<a\s+href="(\/video[^"]*)"[^>]*title="([^"]*)"[^>]*>/g;
+        // 用 thumb-block 块提取（和首页结构一致）
+        const blockRe = /<div\s+class="thumb-block[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>\s*<\/div>/g;
         let m;
-        while ((m = re.exec(html)) !== null) {
-            const name = clean(m[2]);
-            if (m[1] && name) list.push({ vod_id: m[1], vod_name: name, vod_pic: '' });
+        while ((m = blockRe.exec(html)) !== null) {
+            const block = m[1];
+            const a = block.match(/<a\s+href="(\/video[^"]*)"/);
+            if (!a) continue;
+            const img = block.match(/<img[^>]*?(?:data-src|data-thumb|src)="([^"]*)"/);
+            const titleMatch = block.match(/title="([^"]*)"/);
+            const path = a[1];
+            const imgUrl = makeImgUrl(img ? img[1] : '', base);
+            const title = titleMatch ? clean(titleMatch[1]) : '';
+            if (path && title) list.push({ vod_id: path, vod_name: title, vod_pic: imgUrl });
+            if (list.length >= 60) break;
         }
 
+        // 后备
         if (list.length === 0) {
-            const re2 = /<a\s+href="(\/video[^"]*)"[^>]*>[\s\S]*?<img[^>]*src="([^"]*)"[^>]*>/g;
+            const re2 = /<a\s+href="(\/video[^"]*)"[^>]*>[\s\S]*?<img[^>]*?(?:data-src|src)="([^"]*)"[^>]*>[\s\S]*?title="([^"]*)"[^>]*>/g;
             while ((m = re2.exec(html)) !== null) {
-                const path = m[1];
-                let img = m[2] || '';
-                if (img && !img.startsWith('http')) img = base + (img.startsWith('/') ? img : '/' + img);
-                if (path) list.push({ vod_id: path, vod_name: '视频' + path.replace('/video', ''), vod_pic: img });
+                const imgUrl = makeImgUrl(m[2] || '', base);
+                const title = clean(m[3]);
+                if (m[1] && title) list.push({ vod_id: m[1], vod_name: title, vod_pic: imgUrl });
+                if (list.length >= 60) break;
             }
         }
 
-        const seen = new Set();
-        const unique = list.filter(v => { if (seen.has(v.vod_id)) return false; seen.add(v.vod_id); return true; });
-
-        return JSON.stringify({ page: pg, pagecount: 100, limit: 30, total: 3000, list: unique });
+        return JSON.stringify({ page: pg, pagecount: 100, limit: 30, total: 3000, list });
     } catch (e) {
         return JSON.stringify({ page: pg, pagecount: 0, limit: 30, total: 0, list: [] });
     }
