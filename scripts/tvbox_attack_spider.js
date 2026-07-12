@@ -14,7 +14,7 @@ const TVBOX_UA = [
 let HOST = 'https://www.xvideos.com';
 let siteKey = '';
 let siteType = 0;
-let CAT_BASE = ''; // 当前分类的base URL (支持跨域)
+let CAT_BASE = '';
 
 function getExt() { try { return typeof ext !== 'undefined' ? ext : {}; } catch (e) { return {}; } }
 function getBaseUrl() { const cfg = getExt(); return cfg.base_url || HOST; }
@@ -45,108 +45,86 @@ function makeImgUrl(img, base) {
 
 function parseVideoList(html, base, limit) {
     limit = limit || 40;
-    const q = '["\']'; // 匹配单引号或双引号
+    const q = '["\']';
 
-    // 第1步: 按顺序收集所有 video 链接的 href (兼容单/双引号)
-    const hrefRe = new RegExp('<a\\s+href=' + q + '(\\/video[^"\'\\s]*)' + q + '[^>]*>', 'gi');
-    const hrefs = [];
+    // 查找所有 thumb-block 容器，每个容器内独立提取
+    const blockRe = /<div[^>]*class="[^"]*thumb-block[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>/gi;
+    const blocks = [];
     let m;
-    while ((m = hrefRe.exec(html)) !== null) {
-        if (!hrefs.some(h => h === m[1])) hrefs.push(m[1]);
+    while ((m = blockRe.exec(html)) !== null) {
+        blocks.push(m[1]);
     }
-    console.log('[parseVideoList] video链接数: ' + hrefs.length);
-    if (hrefs.length === 0) {
-        console.log('[parseVideoList] HTML头部(前1500字): ' + html.substring(0, 1500).replace(/\n/g, ' ').replace(/\s+/g, ' '));
-        console.log('[parseVideoList] HTML中部(5000-7000字): ' + html.substring(5000, 7000).replace(/\n/g, ' ').replace(/\s+/g, ' '));
-        console.log('[parseVideoList] HTML中部2(10000-12000字): ' + html.substring(10000, 12000).replace(/\n/g, ' ').replace(/\s+/g, ' '));
-        console.log('[parseVideoList] HTML中部3(30000-32000字): ' + html.substring(30000, 32000).replace(/\n/g, ' ').replace(/\s+/g, ' '));
-        // 搜索所有可能的 video 相关 href 模式
-        const altLinks = html.match(/href=["'](\/?(?:red\/)?video[^"'\s]*)["']/gi);
-        if (altLinks) {
-            console.log('[parseVideoList] 所有video相关链接: ' + altLinks.slice(0, 30).join(' | '));
+    console.log('[parseVideoList] thumb-block数: ' + blocks.length);
+
+    // 后备: 其他容器
+    if (blocks.length === 0) {
+        const artRe = /<article[^>]*>([\s\S]*?)<\/article>/gi;
+        while ((m = artRe.exec(html)) !== null) blocks.push(m[1]);
+        console.log('[parseVideoList] article容器数: ' + blocks.length);
+    }
+    if (blocks.length === 0) {
+        const vtRe = /<div[^>]*class="[^"]*video[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>/gi;
+        while ((m = vtRe.exec(html)) !== null) {
+            if (m[1].includes('/video') && m[1].includes('<img')) blocks.push(m[1]);
         }
-        // 搜索JSON视频数据
-        const jsonData = html.match(/"video_id"\s*:\s*"[^"]+"/g);
-        if (jsonData) console.log('[parseVideoList] JSON video_id: ' + jsonData.slice(0, 10).join(' | '));
-        const jsonData2 = html.match(/"id"\s*:\s*"\d{6,}"/g);
-        if (jsonData2) console.log('[parseVideoList] JSON id(6位+): ' + [...new Set(jsonData2)].slice(0, 10).join(' | '));
-        // 搜索时间格式(hh:mm)可能表示时长
-        const timeVals = html.match(/\b\d{1,2}:\d{2}\b/g);
-        if (timeVals) console.log('[parseVideoList] 时间值: ' + [...new Set(timeVals)].slice(0, 20).join(' | '));
-        // 搜索thumb/preview类容器
-        const containers = html.match(/class=["'][^"']*(?:thumb|video|preview)[^"']*["']/gi);
-        if (containers) console.log('[parseVideoList] 容器类: ' + [...new Set(containers)].slice(0, 30).join(' | '));
-        // 搜索JS数组/变量中可能包含的视频数据
-        const jsVideos = html.match(/videos\s*:\s*\[[^\]]+\]/g);
-        if (jsVideos) console.log('[parseVideoList] JS videos数组: ' + jsVideos.slice(0, 3).map(v => v.substring(0, 200)).join(' ||| '));
-        // 搜索script标签中的JSON数据
-        const scriptJson = html.match(/window\.__INITIAL_STATE__\s*=\s*\{[^}]+\}/g);
-        if (scriptJson) console.log('[parseVideoList] __INITIAL_STATE__: ' + scriptJson[0].substring(0, 300));
+        console.log('[parseVideoList] video类容器数: ' + blocks.length);
+    }
+    if (blocks.length === 0) {
+        console.log('[parseVideoList] 无容器! HTML(0-1500): ' + html.substring(0, 1500).replace(/\n/g, ' ').replace(/\s+/g, ' '));
     }
 
-    // 第2步: 按顺序收集页面上所有有效图片URL
-    const imgRe = new RegExp('<img[^>]*(?:data-src|src)\\s*=\\s*' + q + '([^"\'<]*)' + q + '[^>]*>', 'gi');
-    const allImgs = [];
-    while ((m = imgRe.exec(html)) !== null) {
-        const url = m[1];
-        if (url && !url.includes('blank.gif') && !url.includes('data:image') && !url.includes('/assets/')) {
-            allImgs.push(url);
-        }
-    }
-    console.log('[parseVideoList] 有效图片数: ' + allImgs.length);
-
-    // 第3步: 收集标题 - 多种方式
-    const titleMap = {};
-    let titleCount = 0;
-    // 方式A: a[href^="/video"][title]
-    const titleReA = new RegExp('<a\\s+href=' + q + '(\\/video[^"\'\\s]*)' + q + '[^>]*title=' + q + '([^"\'<]*)' + q + '[^>]*>', 'gi');
-    while ((m = titleReA.exec(html)) !== null) {
-        const name = clean(m[2]);
-        if (m[1] && name && !titleMap[m[1]]) { titleMap[m[1]] = name; titleCount++; }
-    }
-    // 方式B: <p class="title"> 内找 a[href^="/video"]
-    const titleReB = /<p[^>]*class="title"[^>]*>([\s\S]*?)<\/p>/gi;
-    while ((m = titleReB.exec(html)) !== null) {
-        const pHtml = m[1];
-        const aMatch = pHtml.match(new RegExp('<a\\s+href=' + q + '(\\/video[^"\'\\s]*)' + q + '[^>]*>([\\s\\S]*?)<\\/a>', 'i'));
-        if (aMatch) {
-            const href = aMatch[1];
-            const name = clean(aMatch[2].replace(/<[^>]+>/g, ''));
-            if (href && name && !titleMap[href]) { titleMap[href] = name; titleCount++; }
-        }
-    }
-    // 方式C: 从 <a href="/video..."> 标签内的文本提取标题
-    const titleReC = new RegExp('<a\\s+href=' + q + '(\\/video[^"\'\\s]*)' + q + '[^>]*>([\\s\\S]*?)<\\/a>', 'gi');
-    while ((m = titleReC.exec(html)) !== null) {
-        const href = m[1];
-        if (titleMap[href]) continue;
-        const text = m[2].replace(/<[^>]+>/g, '').trim();
-        if (href && text) { titleMap[href] = clean(text); titleCount++; }
-    }
-    console.log('[parseVideoList] 标题数: ' + titleCount);
-
-    // 第4步: 收集时长
-    const durRe = /<span\s+class="duration"[^>]*>([^<]*)<\/span>/gi;
-    const durations = [];
-    while ((m = durRe.exec(html)) !== null) { durations.push(m[1].trim()); }
-    console.log('[parseVideoList] 时长数: ' + durations.length);
-
-    // 第5步: 合并 - 按顺序配对
     const list = [];
-    for (let i = 0; i < hrefs.length && list.length < limit; i++) {
-        const href = hrefs[i];
-        const pic = i < allImgs.length ? makeImgUrl(allImgs[i], base) : '';
+    for (let bi = 0; bi < blocks.length && list.length < limit; bi++) {
+        const block = blocks[bi];
+
+        // 提取 href
+        const hrefRe = new RegExp('href=' + q + '(\\/video[^"\'\\s]*)' + q, 'i');
+        const hrefMatch = block.match(hrefRe);
+        if (!hrefMatch) continue;
+        const href = hrefMatch[1];
+
+        // 提取 img (data-src优先)
+        const dataImgRe = new RegExp('<img[^>]*data-src=' + q + '([^"\'<]*)' + q, 'i');
+        const imgRe = new RegExp('<img[^>]*src=' + q + '([^"\'<]*)' + q, 'i');
+        let imgUrl = '';
+        const dataMatch = block.match(dataImgRe);
+        if (dataMatch && !dataMatch[1].includes('blank.gif') && !dataMatch[1].includes('data:image')) {
+            imgUrl = dataMatch[1];
+        } else {
+            const imgMatch = block.match(imgRe);
+            if (imgMatch && !imgMatch[1].includes('blank.gif') && !imgMatch[1].includes('data:image') && !imgMatch[1].includes('/assets/')) {
+                imgUrl = imgMatch[1];
+            }
+        }
+        const pic = imgUrl ? makeImgUrl(imgUrl, base) : '';
+
+        // 提取标题
+        const titleRe = new RegExp('title=' + q + '([^"\'<]*)' + q, 'i');
+        const titleMatch = block.match(titleRe);
+        let name = titleMatch ? clean(titleMatch[1]) : '';
+        if (!name) {
+            const textRe = new RegExp('<a\\s+href=' + q + '\\/video[^"\'\\s]*' + q + '[^>]*>([\\s\\S]*?)<\\/a>', 'i');
+            const textMatch = block.match(textRe);
+            if (textMatch) name = clean(textMatch[1].replace(/<[^>]+>/g, ''));
+        }
+
+        // 提取时长
+        const durRe = /<span[^>]*class="duration"[^>]*>([^<]*)<\/span>/i;
+        const durMatch = block.match(durRe);
+        const duration = durMatch ? durMatch[1].trim() : '';
+
         list.push({
             vod_id: href,
-            vod_name: titleMap[href] || '',
+            vod_name: name || '',
             vod_pic: pic,
-            vod_remarks: durations[i] || '',
+            vod_remarks: duration,
         });
+
+        if (list.length <= 3) {
+            console.log('[parseVideoList] 块' + bi + ': ' + name + ' | ' + pic + ' | ' + duration);
+        }
     }
     console.log('[parseVideoList] 最终列表: ' + list.length + ' 个 (限制: ' + limit + ')');
-    if (list.length > 0) {
-        console.log('[parseVideoList] 首个: ' + list[0].vod_name + ' | ' + list[0].vod_pic);
-    }
     return list;
 }
 
@@ -174,7 +152,6 @@ async function homeVod() {
     try {
         const base = getBaseUrl();
         const allList = [];
-        // 获取最新视频前2页和最受欢迎第1页
         const pages = ['/new/1', '/new/2', '/best/1'];
         for (const p of pages) {
             try {
