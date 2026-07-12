@@ -1,16 +1,6 @@
 /**
- * TVBox JS0 爬虫 - xvideos.com
+ * TVBox JS0 爬虫 - xvideos.com (调试版)
  * 独立文件，无外部依赖，使用 JS0/drpy2 标准接口
- * GitHub: https://github.com/mousu5426-dot/tvbox-videos
- *
- * 实测 HTML 结构 (2026-07):
- *   <div class="thumb-block">
- *     <a href="/video.xxx"><img src="thumb" /></a>
- *     <p class="title"><a href="/video.xxx" title="标题">标题</a></p>
- *     <span class="duration">10min</span>
- *   </div>
- *   注: 首页 / 返回的是 about 页面，不是视频列表
- *       部分 img 使用 blank.gif 占位 + data-src 存真实地址
  */
 const TVBOX_UA = [
     "okhttp/3.12",
@@ -42,23 +32,18 @@ function makeImgUrl(img, base) {
     return img;
 }
 
-// 提取 img 标签中的真实图片 URL（跳过 blank.gif / data:image 等占位图）
 function extractImgUrl(html) {
-    // 先找 data-src
     const ds = html.match(/data-src\s*=\s*"([^"]*)"/);
-    if (ds && ds[1] && !ds[1].includes('blank.gif') && !ds[1].includes('data:image')) return ds[1];
-    // 再找 src
+    if (ds && ds[1] && !ds[1].includes('blank.gif') && !ds[1].includes('data:image') && ds[1] !== '') return ds[1];
     const src = html.match(/src\s*=\s*"([^"]*)"/);
-    if (src && src[1] && !src[1].includes('blank.gif') && !src[1].includes('data:image')) return src[1];
+    if (src && src[1] && !src[1].includes('blank.gif') && !src[1].includes('data:image') && src[1] !== '') return src[1];
     return '';
 }
 
-// 从页面 HTML 解析视频列表（跨所有页面类型通用）
 function parseVideoList(html, base, limit) {
     limit = limit || 40;
-
-    // ---- 第1轮：匹配所有视频缩略图 <a href="/video.xxx">...<img ...>...</a> ----
     const entries = [];
+
     const thumbRe = /<a\s+href="(\/video[^"]*)"[^>]*>([\s\S]*?)<\/a>/gi;
     let m;
     while ((m = thumbRe.exec(html)) !== null) {
@@ -69,32 +54,35 @@ function parseVideoList(html, base, limit) {
         if (entries.some(e => e.vid === href)) continue;
         entries.push({ vid: href, pic: makeImgUrl(img, base) });
     }
+    log('[parseVideoList] 缩略图匹配: ' + entries.length + ' 个');
 
-    // ---- 第2轮：匹配所有标题 ----
     const titleRe = /<p[^>]*class="title"[^>]*>[\s\S]*?<a\s+href="(\/video[^"]*)"[^>]*(?:title="([^"]*)")?[^>]*>([\s\S]*?)<\/a>/gi;
     const titleMap = {};
+    let titleCount = 0;
     while ((m = titleRe.exec(html)) !== null) {
         const name = clean(m[2] || (m[3] || '').replace(/<[^>]+>/g, ''));
-        if (m[1] && name) titleMap[m[1]] = name;
+        if (m[1] && name) { titleMap[m[1]] = name; titleCount++; }
     }
+    log('[parseVideoList] 标题匹配: ' + titleCount + ' 个');
 
-    // ---- 第3轮：匹配所有时长 ----
     const durRe = /<span\s+class="duration"[^>]*>([^<]*)<\/span>/gi;
     const durations = [];
-    while ((m = durRe.exec(html)) !== null) {
-        durations.push(m[1].trim());
-    }
+    while ((m = durRe.exec(html)) !== null) { durations.push(m[1].trim()); }
+    log('[parseVideoList] 时长匹配: ' + durations.length + ' 个');
 
-    // ---- 合并 ----
     const list = [];
     for (let i = 0; i < entries.length && list.length < limit; i++) {
         const e = entries[i];
         list.push({
             vod_id: e.vid,
-            vod_name: titleMap[e.vid] || '视频',
+            vod_name: titleMap[e.vid] || '',
             vod_pic: e.pic,
             vod_remarks: durations[i] || '',
         });
+    }
+    log('[parseVideoList] 最终列表: ' + list.length + ' 个 (限制: ' + limit + ')');
+    if (list.length > 0) {
+        log('[parseVideoList] 首个: ' + list[0].vod_name + ' | ' + list[0].vod_pic);
     }
     return list;
 }
@@ -103,9 +91,11 @@ async function init(cfg) {
     siteKey = cfg.skey;
     siteType = cfg.stype;
     if (cfg.ext && cfg.ext.base_url) HOST = cfg.ext.base_url;
+    log('[init] HOST=' + HOST + ' siteKey=' + siteKey);
 }
 
 async function home() {
+    log('[home] 被调用');
     return JSON.stringify({
         class: [
             { type_id: '/new/1', type_name: '最新视频' },
@@ -116,13 +106,23 @@ async function home() {
 }
 
 async function homeVod() {
+    log('[homeVod] 开始执行');
     try {
         const base = getBaseUrl();
-        const resp = await req(base + '/new/1', { headers: { 'User-Agent': randomUA() }, method: 'get' });
+        const url = base + '/new/1';
+        log('[homeVod] 请求URL: ' + url);
+        const resp = await req(url, { headers: { 'User-Agent': randomUA() }, method: 'get' });
         const html = resp.content || '';
+        log('[homeVod] 响应长度: ' + html.length + ' 字符');
+        log('[homeVod] 前200字: ' + html.substring(0, 200).replace(/\n/g, ' '));
+        if (html.length < 500) {
+            log('[homeVod] 警告: 响应太短, 可能被拦截');
+        }
         const list = parseVideoList(html, base, 40);
+        log('[homeVod] 返回列表: ' + list.length + ' 个视频');
         return JSON.stringify({ list });
     } catch (e) {
+        log('[homeVod] 错误: ' + (e.message || e));
         return JSON.stringify({ list: [] });
     }
 }
@@ -130,40 +130,49 @@ async function homeVod() {
 async function category(tid, pg, filter, extend) {
     pg = pg || 1;
     if (pg <= 0) pg = 1;
+    log('[category] tid=' + tid + ' pg=' + pg);
     try {
         const base = getBaseUrl();
         const path = tid.replace(/\/\d+$/, '');
         const url = base + path + '/' + pg;
+        log('[category] 请求URL: ' + url);
         const resp = await req(url, { headers: { 'User-Agent': randomUA() }, method: 'get' });
         const html = resp.content || '';
+        log('[category] 响应长度: ' + html.length + ' 字符');
+        log('[category] 前150字: ' + html.substring(0, 150).replace(/\n/g, ' '));
         const list = parseVideoList(html, base, 60);
+        log('[category] 返回列表: ' + list.length + ' 个视频');
         return JSON.stringify({ page: pg, pagecount: 100, limit: 30, total: 3000, list });
     } catch (e) {
+        log('[category] 错误: ' + (e.message || e));
         return JSON.stringify({ page: pg, pagecount: 0, limit: 30, total: 0, list: [] });
     }
 }
 
 async function detail(id) {
+    log('[detail] id=' + id);
     try {
         const base = getBaseUrl();
         const url = base + (id.startsWith('/') ? id : '/' + id);
+        log('[detail] 请求URL: ' + url);
         const resp = await req(url, { headers: { 'User-Agent': randomUA() } });
         const html = resp.content || '';
+        log('[detail] 响应长度: ' + html.length + ' 字符');
 
         let title = '', pic = '', desc = '';
 
         const t = html.match(/<title>([\s\S]*?)<\/title>/i);
         if (t) title = clean(t[1]).replace(/ - xvideos\.com.*$/i, '');
+        log('[detail] 标题: ' + title);
 
         const og = html.match(/<meta\s+property="og:image"[^>]*content="([^"]*)"/i);
-        if (og) pic = og[1];
+        if (og) { pic = og[1]; log('[detail] og:image: ' + pic); }
 
         const d = html.match(/<meta\s+name="description"[^>]*content="([^"]*)"/i);
         if (d) desc = d[1].slice(0, 300);
 
         const vod = { vod_id: id, vod_name: title || '视频', vod_pic: pic || '', vod_content: desc || '' };
 
-        // 从 <script> 中提取 setVideoUrlHigh/Low
         let highUrl = '', lowUrl = '';
         const scriptRe = /<script[^>]*>([\s\S]*?)<\/script>/gi;
         let m;
@@ -174,6 +183,7 @@ async function detail(id) {
             const l = text.match(/setVideoUrlLow\s*\(\s*'([^']+)'\s*\)/);
             if (l) lowUrl = l[1];
         }
+        log('[detail] highUrl=' + (highUrl ? '找到' : '未找到') + ' lowUrl=' + (lowUrl ? '找到' : '未找到'));
 
         if (highUrl) {
             vod.vod_play_from = '高清';
@@ -185,43 +195,42 @@ async function detail(id) {
         } else {
             const hls = html.match(/https?:\/\/[^"'\s<>]+\.m3u8[^"'\s<>,]*/);
             const mp4 = html.match(/https?:\/\/[^"'\s<>]+\.mp4[^"'\s<>,]*(?![^<]*preview)/);
-            if (hls) {
-                vod.vod_play_from = '线路1';
-                vod.vod_play_url = 'HLS流$' + hls[0];
-            } else if (mp4) {
-                vod.vod_play_from = '线路1';
-                vod.vod_play_url = 'MP4直链$' + mp4[0];
-            } else {
-                vod.vod_play_from = '源';
-                vod.vod_play_url = '直接播放$' + url;
-            }
+            if (hls) { vod.vod_play_from = '线路1'; vod.vod_play_url = 'HLS流$' + hls[0]; log('[detail] 用m3u8后备'); }
+            else if (mp4) { vod.vod_play_from = '线路1'; vod.vod_play_url = 'MP4直链$' + mp4[0]; log('[detail] 用mp4后备'); }
+            else { vod.vod_play_from = '源'; vod.vod_play_url = '直接播放$' + url; log('[detail] 无直链,用原始URL'); }
         }
 
         return JSON.stringify({ list: [vod] });
     } catch (e) {
+        log('[detail] 错误: ' + (e.message || e));
         return JSON.stringify({ list: [] });
     }
 }
 
 async function play(flag, id) {
+    log('[play] flag=' + flag + ' id=' + id);
     return JSON.stringify({ parse: 0, url: id });
 }
 
 async function search(wd, pg) {
     pg = pg || 1;
+    log('[search] wd=' + wd + ' pg=' + pg);
     try {
         const base = getBaseUrl();
-        const resp = await req(base + '/?k=' + encodeURIComponent(wd), { headers: { 'User-Agent': randomUA() } });
+        const url = base + '/?k=' + encodeURIComponent(wd);
+        log('[search] 请求URL: ' + url);
+        const resp = await req(url, { headers: { 'User-Agent': randomUA() } });
         const html = resp.content || '';
+        log('[search] 响应长度: ' + html.length + ' 字符');
         const list = parseVideoList(html, base, 20);
+        log('[search] 结果: ' + list.length + ' 个');
         return JSON.stringify({ list, page: pg });
     } catch (e) {
+        log('[search] 错误: ' + (e.message || e));
         return JSON.stringify({ list: [], page: pg });
     }
 }
 
 export function __jsEvalReturn() {
-    return {
-        init, home, homeVod, category, detail, play, search,
-    };
+    return { init, home, homeVod, category, detail, play, search };
 }
