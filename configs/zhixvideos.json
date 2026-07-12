@@ -1,0 +1,250 @@
+{
+    "spider": "https://files.zohopublic.com.cn/public/workdrive-public/download/gd5ic01b6d4922692401eac6018178d033d06",
+    "lives": [
+        {
+            "name": "牛播一(新版影视仓/ok影视)",
+            "type": 0,
+            "pass": true,
+            "url": "https://pastebin.com/raw/u2MS0nrM"
+        },
+        {
+            "name": "OK",
+            "type": 0,
+            "pass": true,
+            "url": "https://pastebin.com/raw/Ds4nVmPN"
+        },
+        {
+            "name": "范明明",
+            "type": 0,
+            "pass": true,
+            "url": "http://rihou.vip:55/yz.txt"
+        },
+        {
+            "name": "肥猫",
+            "type": 0,
+            "pass": true,
+            "url": "http://rihou.vip:55/fm.txt"
+        }
+    ],
+    "sites": [
+        {
+            "key": "csp_LocalFile",
+            "name": "本机文件",
+            "type": 3,
+            "api": "csp_LocalFile",
+            "searchable": 0,
+            "quickSearch": 0,
+            "filterable": 1,
+            "type_flag": 0
+        },
+        {
+            "key": "csp_Market",
+            "name": "商店",
+            "type": 3,
+            "api": "csp_Market",
+            "searchable": 0,
+            "quickSearch": 0,
+            "filterable": 0,
+            "changeable": 0,
+            "ext": "https://agit.ai/fantaiying/4/raw/branch/master/taishan.json;md5;112a27db4d8e192fbde61f2d81dd2ee9"
+        },
+        {
+            "key": "new_sites",
+            "name": "聚合(运营)",
+            "type": 3,
+            "api": "https://www.agit.ai/fantaiying/dr/raw/branch/main/libs/drpy2.min.js",
+            "ext": "https://www.agit.ai/fantaiying/dr/raw/branch/main/js/聚合.js"
+        },
+        {
+            "key": "pianku",
+            "name": "片库(运营)",
+            "type": 3,
+            "api": "https://www.agit.ai/fantaiying/dr/raw/branch/main/libs/drpy2.min.js",
+            "ext": "https://www.agit.ai/fantaiying/dr/raw/branch/main/js/片库.js"
+        },
+        {
+            "key": "drpy_js_ouge1",
+            "name": "欧歌(运营)",
+            "type": 3,
+            "api": "https://jihulab.com/yw88075/tvbox/-/raw/main/dr/lib/drpy2.min.js",
+            "ext": "https://jihulab.com/yw88075/tvbox/-/raw/main/dr/js/欧歌.js"
+        },
+        {
+            "key": "drpy_js_zhibo1",
+            "name": "310直播(运营)",
+            "type": 3,
+            "api": "https://www.agit.ai/fantaiying/dr/raw/branch/main/libs/drpy2.min.js",
+            "ext": "https://www.agit.ai/fantaiying/dr/raw/branch/main/js/310直播.js"
+        },
+        {
+            "key": "drpy_js_youku_xzn",
+            "name": "优酷(自用)",
+            "type": 3,
+            "api": "https://www.agit.ai/fantaiying/dr/raw/branch/main/libs/drpy2.min.js",
+            "ext": "https://www.agit.ai/fantaiying/dr/raw/branch/main/js/优酷.js"
+        },
+        {
+            "key": "yiso",
+            "name": "易搜(搜索)",
+            "type": 3,
+            "api": "csp_YiSo",
+            "searchable": 1,
+            "quickSearch": 1
+        },
+        {
+            "key": "pan_sou",
+            "name": "盘搜(搜索)",
+            "type": 3,
+            "api": "csp_PanSou",
+            "searchable": 1,
+            "quickSearch": 1,
+            "changeable": 0,
+            "ext": "http://127.0.0.1:9978/file/tvfan/token.txt+4k|auto|fhd"
+        },
+        {
+            "key": "pan_search",
+            "name": "盘搜索(搜索)",
+            "type": 3,
+            "api": "csp_PanSearch",
+            "searchable": 1,
+            "quickSearch": 1,
+            "changeable": 0,
+            "ext": "http://127.0.0.1:9978/file/tvfan/token.txt+4k|auto|fhd"
+        },
+        {
+            "key": "upyun",
+            "name": "云搜(搜索)",
+            "type": 3,
+            "api": "csp_UpYun",
+            "searchable": 1,
+            "quickSearch": 1,
+            "changeable": 0,
+            "ext": "http://127.0.0.1:9978/file/tvfan/token.txt+4k|auto|fhd"
+        },
+        {
+            "key": "xiao_zhi_tiao",
+            "name": "纸条搜(搜索)",
+            "type": 3,
+            "api": "csp_XiaoZhiTiao",
+            "searchable": 1,
+            "quickSearch": 1,
+            "changeable": 0
+        },
+        {
+            "key": "dovx",
+            "name": "七夜(搜索)",
+            "type": 3,
+            "api": "csp_Dovx",
+            "searchable": 1,
+            "quickSearch": 1,
+            "changeable": 0
+        },
+        {
+            "key": "push_agent",
+            "name": "推送",
+            "type": 3,
+            "api": "csp_PushAgent",
+            "playerType": 1,
+            "searchable": 1,
+            "quickSearch": 1,
+            "filterable": 0,
+            "jar": "https://gh.flyinbug.top/gh/https://raw.githubusercontent.com/zhanghongbing1/jar/main/custom_spider.jar"
+        },
+        {
+            "key": "drpy_js_cctv",
+            "name": "远凰少儿(本地)",
+            "type": 3,
+            "api": "./dr_py/libs/drpy2.min.js",
+            "ext": "./dr_py/js/远凰课堂.js"
+        },
+        {
+            "key": "bili_open",
+            "name": "哔哩综合(本地)",
+            "type": 3,
+            "api": "./cat/js/bili_open.js",
+            "changeable": 0,
+            "ext": {
+                "categories": "短剧#沙雕动画#沙雕穿越#沙雕",
+                "cookie": ""
+            }
+        },
+        {
+            "key": "bili_open_1",
+            "name": "哔哩少儿(本地)",
+            "type": 3,
+            "api": "./cat/js/bili_open.js",
+            "changeable": 0,
+            "ext": {
+                "json": "https://ghp.ci/raw.githubusercontent.com/fantaiying7/EXT/refs/heads/main/少儿教育.json"
+            }
+        },
+        {
+            "key": "bili_open_2",
+            "name": "哔哩幼儿(本地)",
+            "type": 3,
+            "api": "./cat/js/bili_open.js",
+            "changeable": 0,
+            "ext": {
+                "json": "https://ghp.ci/raw.githubusercontent.com/fantaiying7/EXT/refs/heads/main/幼儿乐园.json"
+            }
+        },
+        {
+            "key": "小学课堂",
+            "name": "小学┃课堂",
+            "type": 3,
+            "api": "csp_Bili",
+            "style": {
+                "type": "rect",
+                "ratio": 1.597
+            },
+            "searchable": 0,
+            "quickSearch": 0,
+            "changeable": 0,
+            "ext": {
+                "json": "https://ghp.ci/raw.githubusercontent.com/fantaiying7/EXT/refs/heads/main/小学课堂.json"
+            }
+        },
+        {
+            "key": "初中课堂",
+            "name": "初中┃课堂",
+            "type": 3,
+            "api": "csp_Bili",
+            "style": {
+                "type": "rect",
+                "ratio": 1.597
+            },
+            "searchable": 0,
+            "quickSearch": 0,
+            "changeable": 0,
+            "ext": {
+                "json": "https://ghp.ci/raw.githubusercontent.com/fantaiying7/EXT/refs/heads/main/初中课堂.json"
+            }
+        },
+        {
+            "key": "高中教育",
+            "name": "高中┃课堂",
+            "type": 3,
+            "api": "csp_Bili",
+            "style": {
+                "type": "rect",
+                "ratio": 1.597
+            },
+            "searchable": 0,
+            "quickSearch": 0,
+            "changeable": 0,
+            "ext": {
+                "json": "https://ghp.ci/raw.githubusercontent.com/fantaiying7/EXT/refs/heads/main/高中课堂.json"
+            }
+        },
+        {
+            "key": "xv_test",
+            "name": "🔬测试丨JS爬虫",
+            "type": 3,
+            "api": "https://raw.githubusercontent.com/gaotianliuyun/gao/master/lib/drpy2.min.js",
+            "ext": "https://raw.githubusercontent.com/mousu5426-dot/tvbox-videos/main/spiders/js/xv_spider.js",
+            "searchable": 1,
+            "quickSearch": 1,
+            "filterable": 0
+        }
+    ]
+}
