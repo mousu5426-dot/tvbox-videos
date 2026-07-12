@@ -56,10 +56,6 @@ async function home() {
     });
 }
 
-// 从 img 标签提取图片 URL（优先 data-src，后备 src）
-function getImgUrl(el) {
-    return el.attribs['data-src'] || el.attribs['data-thumb'] || el.attribs['src'] || '';
-}
 function makeImgUrl(img, base) {
     if (!img) return '';
     if (img.startsWith('//')) return 'https:' + img;
@@ -74,35 +70,46 @@ async function homeVod() {
         const html = resp.content || '';
         const list = [];
 
-        // 匹配 thumb-block 块
-        const blockRe = /<div\s+class="thumb-block[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>\s*<\/div>/g;
-        let m;
-        while ((m = blockRe.exec(html)) !== null) {
-            const block = m[1];
-            const a = block.match(/<a\s+href="(\/video[^"]*)"/);
-            if (!a) continue;
-            const img = block.match(/<img[^>]*?(?:data-src|data-thumb|src)="([^"]*)"/);
-            const titleMatch = block.match(/title="([^"]*)"/);
-            const durMatch = block.match(/class="duration">([^<]*)</);
-            const path = a[1];
-            let imgUrl = img ? img[1] : '';
-            const title = titleMatch ? clean(titleMatch[1]) : '';
-            const dur = durMatch ? durMatch[1].trim() : '';
-            imgUrl = makeImgUrl(imgUrl, base);
-            if (path && title) list.push({ vod_id: path, vod_name: title, vod_pic: imgUrl, vod_remarks: dur });
-            if (list.length >= 40) break;
-        }
+        // 按 thumb-block 分割
+        const parts = html.split(/<div\s+class="thumb-block[^"]*"[^>]*>/);
+        for (let i = 1; i < parts.length; i++) {
+            const block = parts[i].split('</div>')[0];
 
-        // 后备：通用匹配
-        if (list.length === 0) {
-            const re2 = /<a\s+href="(\/video[^"]*)"[^>]*>[\s\S]*?<img[^>]*?(?:data-src|src)="([^"]*)"[^>]*>[\s\S]*?title="([^"]*)"[^>]*>/g;
-            while ((m = re2.exec(html)) !== null) {
-                const path = m[1];
-                const imgUrl = makeImgUrl(m[2] || '', base);
-                const title = clean(m[3]);
-                if (path && title) list.push({ vod_id: path, vod_name: title, vod_pic: imgUrl, vod_remarks: '' });
-                if (list.length >= 40) break;
+            const a = block.match(/href="(\/video[^"]*)"/);
+            if (!a) continue;
+
+            // 图片：尝试所有可能的属性名
+            let imgUrl = '';
+            const imgAttrs = ['data-src', 'data-thumb', 'data-original', 'data-lazy-src', 'src'];
+            for (const attr of imgAttrs) {
+                const re = new RegExp(attr + '="([^"]*)"');
+                const m = block.match(re);
+                if (m && m[1] && !m[1].includes('data:image')) {
+                    imgUrl = m[1];
+                    break;
+                }
             }
+
+            // 标题：先找 title 属性，再找 p.title 内的文本
+            let title = '';
+            const titleAttr = block.match(/title="([^"]*)"/);
+            if (titleAttr && titleAttr[1]) {
+                title = clean(titleAttr[1]);
+            } else {
+                const pTitle = block.match(/<p\s+class="title"[^>]*>([\s\S]*?)<\/p>/);
+                if (pTitle) {
+                    title = clean(pTitle[1].replace(/<[^>]+>/g, ''));
+                }
+            }
+
+            // 时长
+            let dur = '';
+            const durMatch = block.match(/class="duration">([^<]*)</);
+            if (durMatch) dur = durMatch[1].trim();
+
+            imgUrl = makeImgUrl(imgUrl, base);
+            if (a[1] && title) list.push({ vod_id: a[1], vod_name: title, vod_pic: imgUrl, vod_remarks: dur });
+            if (list.length >= 40) break;
         }
 
         return JSON.stringify({ list });
@@ -127,31 +134,36 @@ async function category(tid, pg, filter, extend) {
         const html = resp.content || '';
         const list = [];
 
-        // 用 thumb-block 块提取（和首页结构一致）
-        const blockRe = /<div\s+class="thumb-block[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>\s*<\/div>/g;
-        let m;
-        while ((m = blockRe.exec(html)) !== null) {
-            const block = m[1];
-            const a = block.match(/<a\s+href="(\/video[^"]*)"/);
-            if (!a) continue;
-            const img = block.match(/<img[^>]*?(?:data-src|data-thumb|src)="([^"]*)"/);
-            const titleMatch = block.match(/title="([^"]*)"/);
-            const path = a[1];
-            const imgUrl = makeImgUrl(img ? img[1] : '', base);
-            const title = titleMatch ? clean(titleMatch[1]) : '';
-            if (path && title) list.push({ vod_id: path, vod_name: title, vod_pic: imgUrl });
-            if (list.length >= 60) break;
-        }
+        const parts = html.split(/<div\s+class="thumb-block[^"]*"[^>]*>/);
+        for (let i = 1; i < parts.length; i++) {
+            const block = parts[i].split('</div>')[0];
 
-        // 后备
-        if (list.length === 0) {
-            const re2 = /<a\s+href="(\/video[^"]*)"[^>]*>[\s\S]*?<img[^>]*?(?:data-src|src)="([^"]*)"[^>]*>[\s\S]*?title="([^"]*)"[^>]*>/g;
-            while ((m = re2.exec(html)) !== null) {
-                const imgUrl = makeImgUrl(m[2] || '', base);
-                const title = clean(m[3]);
-                if (m[1] && title) list.push({ vod_id: m[1], vod_name: title, vod_pic: imgUrl });
-                if (list.length >= 60) break;
+            const a = block.match(/href="(\/video[^"]*)"/);
+            if (!a) continue;
+
+            let imgUrl = '';
+            const imgAttrs = ['data-src', 'data-thumb', 'data-original', 'data-lazy-src', 'src'];
+            for (const attr of imgAttrs) {
+                const re = new RegExp(attr + '="([^"]*)"');
+                const m = block.match(re);
+                if (m && m[1] && !m[1].includes('data:image')) {
+                    imgUrl = m[1];
+                    break;
+                }
             }
+
+            let title = '';
+            const titleAttr = block.match(/title="([^"]*)"/);
+            if (titleAttr && titleAttr[1]) {
+                title = clean(titleAttr[1]);
+            } else {
+                const pTitle = block.match(/<p\s+class="title"[^>]*>([\s\S]*?)<\/p>/);
+                if (pTitle) title = clean(pTitle[1].replace(/<[^>]+>/g, ''));
+            }
+
+            imgUrl = makeImgUrl(imgUrl, base);
+            if (a[1] && title) list.push({ vod_id: a[1], vod_name: title, vod_pic: imgUrl });
+            if (list.length >= 60) break;
         }
 
         return JSON.stringify({ page: pg, pagecount: 100, limit: 30, total: 3000, list });
