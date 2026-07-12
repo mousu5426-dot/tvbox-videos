@@ -83,12 +83,20 @@ function parseVideoList(html, base, limit) {
     const titleReB = /<p[^>]*class="title"[^>]*>([\s\S]*?)<\/p>/gi;
     while ((m = titleReB.exec(html)) !== null) {
         const pHtml = m[1];
-        const aMatch = pHtml.match(/<a\s+href=(["\'])(\/video[^"\']*)\1[^>]*>([\s\S]*?)<\/a>/i);
+        const aMatch = pHtml.match(new RegExp('<a\\s+href=' + q + '(\\/video[^"\'\\s]*)' + q + '[^>]*>([\\s\\S]*?)<\\/a>', 'i'));
         if (aMatch) {
-            const href = aMatch[2];
-            const name = clean(aMatch[3].replace(/<[^>]+>/g, ''));
+            const href = aMatch[1];
+            const name = clean(aMatch[2].replace(/<[^>]+>/g, ''));
             if (href && name && !titleMap[href]) { titleMap[href] = name; titleCount++; }
         }
+    }
+    // 方式C: 从 <a href="/video..."> 标签内的文本提取标题
+    const titleReC = new RegExp('<a\\s+href=' + q + '(\\/video[^"\'\\s]*)' + q + '[^>]*>([\\s\\S]*?)<\\/a>', 'gi');
+    while ((m = titleReC.exec(html)) !== null) {
+        const href = m[1];
+        if (titleMap[href]) continue;
+        const text = m[2].replace(/<[^>]+>/g, '').trim();
+        if (href && text) { titleMap[href] = clean(text); titleCount++; }
     }
     console.log('[parseVideoList] 标题数: ' + titleCount);
 
