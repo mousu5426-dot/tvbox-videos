@@ -17,6 +17,8 @@ const TVBOX_UA = [
 ];
 
 let HOST = 'https://www.xvideos.com';
+let siteKey = '';
+let siteType = 0;
 
 function getExt() {
     try { return typeof ext !== 'undefined' ? ext : {}; } catch (e) { return {}; }
@@ -61,7 +63,6 @@ async function homeVod() {
         const html = resp.content || '';
         const list = [];
 
-        // 用正则提取视频缩略图块
         const re = /<div\s+class="thumb-block[^"]*"[^>]*>[\s\S]*?<a\s+href="(\/video[^"]*)"[\s\S]*?<img[^>]*src="([^"]*)"[^>]*>[\s\S]*?(?:<p\s+class="title"[^>]*>([\s\S]*?)<\/p>)?[\s\S]*?(?:<span\s+class="duration">([^<]*)<\/span>)?/g;
         let m;
         while ((m = re.exec(html)) !== null) {
@@ -74,7 +75,6 @@ async function homeVod() {
             if (list.length >= 40) break;
         }
 
-        // 备用匹配
         if (list.length === 0) {
             const re2 = /<a\s+href="(\/video[^"]*)"[^>]*>[\s\S]*?<img[^>]*src="([^"]*)"[^>]*>[\s\S]*?title="([^"]*)"[^>]*>/g;
             while ((m = re2.exec(html)) !== null) {
@@ -125,7 +125,6 @@ async function category(tid, pg) {
             }
         }
 
-        // 去重
         const seen = new Set();
         const unique = list.filter(v => { if (seen.has(v.vod_id)) return false; seen.add(v.vod_id); return true; });
 
@@ -142,25 +141,20 @@ async function detail(id) {
         const resp = await req(url, { headers: { 'User-Agent': randomUA() } });
         const html = resp.content || '';
 
-        // 标题
         let title = '';
         const t = html.match(/<title>([\s\S]*?)<\/title>/i);
         if (t) title = clean(t[1]).replace(/ - xvideos\.com.*$/i, '');
 
-        // 封面
         let pic = '';
         const og = html.match(/<meta\s+property="og:image"[^>]*content="([^"]*)"/i);
         if (og) pic = og[1];
 
-        // 描述
         let desc = '';
         const d = html.match(/<meta\s+name="description"[^>]*content="([^"]*)"/i);
         if (d) desc = d[1].slice(0, 300);
 
-        // 提取直链
         const vod = { vod_id: id, vod_name: title || '视频', vod_pic: pic || '', vod_content: desc || '' };
 
-        // setVideoUrlHigh/Low (从 script 中提取)
         let videoUrl = '', videoUrlLow = '';
         const scriptRe = /<script[^>]*>([\s\S]*?)<\/script>/g;
         let m;
@@ -223,6 +217,14 @@ async function search(wd, pg) {
     }
 }
 
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { init, home, homeVod, category, detail, play, search };
+export function __jsEvalReturn() {
+    return {
+        init: init,
+        home: home,
+        homeVod: homeVod,
+        category: category,
+        detail: detail,
+        play: play,
+        search: search,
+    };
 }
