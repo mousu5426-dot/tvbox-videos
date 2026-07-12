@@ -1,11 +1,13 @@
 /**
- * TVBox JS0 爬虫 - xHamster.com (zh.xhamster.com) — v2 修复版
+ * TVBox JS0 爬虫 - xHamster.com (zh.xhamster.com) — v3 修复版
  * https://raw.githubusercontent.com/mousu5426-dot/tvbox-videos/main/configs/zhixvideos.json
  * 功能:
  *  - 列表页: 最新视频 / 最受欢迎 / 热门分类
  *  - 详情页: 提取 HLS 视频直链 (xhcdn / video-nss)
  *  - 支持分页
  *  - 中英文标题
+ * 
+ * v3: 修复缺失 log 函数导致 TVBox 加载崩溃
  */
 const TVBOX_UA = [
     "Dalvik/2.1.0 (Linux; U; Android 11; MI 10 Pro Build/RKQ1.200826.002)",
@@ -63,6 +65,13 @@ function sanitizeUrl(url) {
     url = url.replace(/\{pg\}/g, '1');
     url = url.replace(/\{[^}]+\}/g, '0');
     return url;
+}
+
+/** 调试日志 (通过TVBox的QuJs运行时输出到logcat) */
+function log(msg) {
+    try {
+        console.log('[xhamster] ' + msg);
+    } catch (e) {}
 }
 
 // ---------- 列表页解析 (JSON 优先, HTML 正则回退) ----------
@@ -490,18 +499,18 @@ async function category(tid, pg, filter, extend) {
         var totalPages = 1;
 
         // [NEW] 优先从 JSON 提取 (50条/页)
-         var initialsResult = parseFromInitials(html, base);
-         if (initialsResult) {
-             list = initialsResult.list;
-             var totalVideos = initialsResult.stats.videos || 0;
-             if (totalVideos > 0) {
-                 totalPages = Math.ceil(totalVideos / initialsResult.perPage);
-             } else {
-                 // stats.videos 为空时从 perPage 估算: 列表未满 → 最后一页
-                 totalPages = list.length >= initialsResult.perPage ? pg + 10 : pg;
-             }
-             log('category: JSON模式 页=' + pg + ' 总页=' + totalPages + ' 视频=' + list.length);
-         } else {
+        var initialsResult = parseFromInitials(html, base);
+        if (initialsResult) {
+            list = initialsResult.list;
+            var totalVideos = initialsResult.stats.videos || 0;
+            if (totalVideos > 0) {
+                totalPages = Math.ceil(totalVideos / initialsResult.perPage);
+            } else {
+                // stats.videos 为空时从 perPage 估算: 列表未满 → 最后一页
+                totalPages = list.length >= initialsResult.perPage ? pg + 10 : pg;
+            }
+            log('category: JSON模式 页=' + pg + ' 总页=' + totalPages + ' 视频=' + list.length);
+        } else {
             // 回退: HTML 正则解析
             var totalPagesFallback = 1;
             var pgRe = /<a[^>]*href\s*=\s*["'][^"']*\/?(\d+)["'][^>]*>/gi;
@@ -655,6 +664,6 @@ async function search(wd, pg) {
     }
 }
 
-function __jsEvalReturn() {
+export function __jsEvalReturn() {
     return { init: init, home: home, homeVod: homeVod, category: category, detail: detail, play: play, search: search };
 }
