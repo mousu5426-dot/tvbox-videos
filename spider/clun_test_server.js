@@ -2,15 +2,6 @@
  * 镜像站安全测试 - TVBox JS 爬虫
  * 目标服务器: https://www.xvideos.com
  * 适配 TVBox/FongMi JS0 接口规范
- * 
- * 参考: tvbox_attack_spider.py (老师提供的 Python 爬虫)
- * 接口对照:
- *   Python TVBoxSpider.home()       → JS home()
- *   Python TVBoxSpider.homeVod()    → JS homeVod()
- *   Python TVBoxSpider.category()   → JS category()
- *   Python TVBoxSpider.detail()     → JS detail()
- *   Python TVBoxSpider.search()     → JS search()
- *   Python TVBoxSpider.play()       → JS play()
  */
 
 let host = 'https://www.xvideos.com';
