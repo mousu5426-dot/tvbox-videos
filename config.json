@@ -1,0 +1,5 @@
+{
+"sites":[
+{"key":"xvideos","name":"XVideos测试","type":3,"api":"./spider/xv_spider.js","searchable":1,"quickSearch":1,"filterable":1}
+]
+}
