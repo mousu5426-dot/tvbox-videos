@@ -1,12 +1,13 @@
 /**
- * TVBox JS0 爬虫 - xHamster.com (zh.xhamster.com) — v3 修复版
+ * TVBox JS0 爬虫 - xHamster.com (zh.xhamster.com) — v4
  * https://raw.githubusercontent.com/mousu5426-dot/tvbox-videos/main/configs/zhixvideos.json
  * 功能:
  *  - 列表页: 最新视频 / 最受欢迎 / 热门分类
  *  - 详情页: 提取 HLS 视频直链 (xhcdn / video-nss)
- *  - 支持分页
+ *  - 支持无限滚动分页
  *  - 中英文标题
  * 
+ * v4: 修复路径分页(/N格式), 修复无限制滚动(totalPages估算), 加速homeVod(3页→2页)
  * v3: 修复缺失 log 函数导致 TVBox 加载崩溃
  */
 const TVBOX_UA = [
@@ -419,7 +420,8 @@ async function homeVod() {
         var base = getBaseUrl();
         var allList = [];
         // [FIXED] 移动端: /popular → 404, 改用 /best/weekly + /best/monthly
-        var pages = ['/newest?page=1', '/best/weekly?page=1', '/best/monthly?page=1'];
+        // v3: 路径分页格式, 减少到2页加快加载速度 (第1页不加 /1)
+        var pages = ['/newest', '/best/weekly'];
         for (var pi = 0; pi < pages.length; pi++) {
             try {
                 var url = base + pages[pi];
@@ -466,9 +468,8 @@ async function category(tid, pg, filter, extend) {
             catBase = mm ? mm[0] : getBaseUrl();
         } else {
             var base = getBaseUrl();
-            // [FIXED] xHamster 分页格式是 ?page=N, 不是 /N
-            var sep = tid.indexOf('?') === -1 ? '?' : '&';
-            url = base + tid + sep + 'page=' + pg;
+            // [FIXED] xHamster 路径分页: 第1页不加 /1, 第2页起用 /2, /3 ...
+            url = base + tid + (pg > 1 ? '/' + pg : '');
             catBase = base;
         }
 
@@ -506,8 +507,8 @@ async function category(tid, pg, filter, extend) {
             if (totalVideos > 0) {
                 totalPages = Math.ceil(totalVideos / initialsResult.perPage);
             } else {
-                // stats.videos 为空时从 perPage 估算: 列表未满 → 最后一页
-                totalPages = list.length >= initialsResult.perPage ? pg + 10 : pg;
+                // stats.videos 为空时保守估算, 始终允许向下滚动
+                totalPages = pg + 15;
             }
             log('category: JSON模式 页=' + pg + ' 总页=' + totalPages + ' 视频=' + list.length);
         } else {
