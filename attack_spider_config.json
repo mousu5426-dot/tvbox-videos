@@ -1,0 +1,18 @@
+{
+    "sites": [
+        {
+            "key": "attack_spider",
+            "name": "安全测试爬虫",
+            "type": 3,
+            "api": "https://raw.githubusercontent.com/mousu5426-dot/tvbox-videos/main/scripts/tvbox_attack_spider.js",
+            "searchable": 1,
+            "quickSearch": 1,
+            "changeable": 1,
+            "ext": {
+                "base_url": "http://127.0.0.1:8080",
+                "嗅探词": "m3u8#.mp4#setVideoUrlHigh#setVideoUrlLow",
+                "并发数": "5"
+            }
+        }
+    ]
+}
