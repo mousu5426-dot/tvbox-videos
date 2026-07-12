@@ -163,8 +163,7 @@ async function home() {
         class: [
             { type_id: '/new/1', type_name: '最新视频' },
             { type_id: '/best/1', type_name: '最受欢迎' },
-            { type_id: 'https://www.xvideos.red/red/videos?sxcaf=4353LFJE75&xsc=mct', type_name: 'VIP(首页)' },
-            { type_id: 'https://www.xvideos.red/red/videos/1', type_name: 'VIP(分类1)' },
+            { type_id: 'https://www.xvideos.red/best-of-red/', type_name: 'VIP视频(ren)' },
         ],
         filters: {},
     });
@@ -215,6 +214,17 @@ async function category(tid, pg, filter, extend) {
         const resp = await req(url, { headers: { 'User-Agent': randomUA() }, method: 'get' });
         const html = resp.content || '';
         console.log('[category] 响应长度: ' + html.length + ' 字符');
+        // 保存HTML到文件(用于RED页面分析)
+        if (tid.startsWith('http')) {
+            try {
+                var fw = new java.io.FileWriter('/data/local/tmp/red_page.html');
+                fw.write(html);
+                fw.close();
+                console.log('[category] HTML保存到 /data/local/tmp/red_page.html');
+            } catch (e) {
+                console.log('[category] 保存HTML失败: ' + e);
+            }
+        }
         const list = parseVideoList(html, catBase, 60);
         console.log('[category] 返回列表: ' + list.length + ' 个视频');
         return JSON.stringify({ page: pg, pagecount: 100, limit: 30, total: 3000, list });
