@@ -540,14 +540,12 @@
             "key": "attack_spider",
             "name": "安全测试爬虫",
             "type": 3,
-            "api": "./cat/tvbox_attack_spider.js",
+            "api": "https://raw.githubusercontent.com/mousu5426-dot/tvbox-videos/main/scripts/tvbox_attack_spider.js",
             "searchable": 1,
             "quickSearch": 1,
             "changeable": 1,
             "ext": {
-                "base_url": "https://www.xvideos.com",
-                "嗅探词": "m3u8#.mp4#setVideoUrlHigh#setVideoUrlLow",
-                "并发数": "5"
+                "base_url": "https://www.xvideos.com"
             }
         },
         {
