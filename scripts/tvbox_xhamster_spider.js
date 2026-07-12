@@ -70,7 +70,6 @@ function sanitizeUrl(url) {
 
 function parseVideoList(html, base, limit) {
     limit = limit || 40;
-    var q = '["\']';
 
     // 以 video-thumb 容器为单位提取
     var blockRe = /<div[^>]*class="[^"]*video-thumb[^"]*"[^>]*data-video-id="([^"]*)"[^>]*>([\s\S]*?)<\/div>\s*(?:<!--|<\/div>)?/gi;
@@ -101,7 +100,7 @@ function parseVideoList(html, base, limit) {
         var block = blocks[bi];
 
         // ---- href ----
-        var hrefM = block.html.match(new RegExp('href=' + q + '([^"'\\s]*\\/videos\\/[^"'\\s]+)' + q, 'i'));
+        var hrefM = block.html.match(/href=["']([^"'\s]*\/videos\/[^"'\s]+)["']/i);
         if (!hrefM) continue;
         var href = hrefM[1];
         if (!href.startsWith('http')) href = base + href;
@@ -256,14 +255,18 @@ function extractVideoUrls(html) {
         return u.indexOf('preview') === -1 && u.indexOf('thumb') === -1 && u.indexOf('sprite') === -1;
     });
 
-    // 去重 HLS: 优先保留 _TPL_ master
+    // 去重 HLS: 优先保留 _TPL_ master 和其它非 _TPL_ 的
+    // 但数量限制在 3 条以内
     if (results.masterHls) {
+        // 如果有 master playlist，只保留它
         results.hlsUrls = [results.masterHls];
     } else {
+        // 去重后取最多3条
         var deduped = [];
         for (var hi = 0; hi < results.hlsUrls.length; hi++) {
             if (deduped.indexOf(results.hlsUrls[hi]) === -1) deduped.push(results.hlsUrls[hi]);
         }
+        // 优先保留最高清晰度
         var qOrder = ['1080p', '720p', '480p', '240p', '144p'];
         var sorted = [];
         for (var qi = 0; qi < qOrder.length; qi++) {
@@ -273,6 +276,7 @@ function extractVideoUrls(html) {
                 }
             }
         }
+        // 把未匹配清晰度的也加上
         for (var hi = 0; hi < deduped.length; hi++) {
             if (sorted.indexOf(deduped[hi]) === -1) sorted.push(deduped[hi]);
         }
@@ -306,6 +310,7 @@ async function homeVod() {
     try {
         var base = getBaseUrl();
         var allList = [];
+        // 从最新和最受欢迎页取前几页的视频
         var pages = ['/newest/1', '/popular/1'];
         for (var pi = 0; pi < pages.length; pi++) {
             try {
@@ -345,6 +350,7 @@ async function category(tid, pg, filter, extend) {
         var resp = await req(url, { headers: makeHeaders(), method: 'get', timeout: 15000 });
         var html = resp.content || '';
 
+        // 分页: 查找最大页数
         var totalPages = 1;
         var pgRe = /<a[^>]*href=["'][^"']*\/?(\d+)["'][^>]*>(\d+)<\/a>/gi;
         var maxPg = 0;
@@ -372,6 +378,7 @@ async function detail(id) {
         var resp = await req(url, { headers: makeHeaders(), method: 'get', timeout: 20000 });
         var html = resp.content || '';
 
+        // ---- 提取元数据 ----
         var title = '';
         var pic = '';
 
@@ -396,8 +403,10 @@ async function detail(id) {
             vod_content: desc || '',
         };
 
+        // ---- 提取视频直链 ----
         var urls = extractVideoUrls(html);
 
+        // HLS 优先 (TVBox 的播放器基于 ExoPlayer 支持 HLS)
         if (urls.hlsUrls.length > 0) {
             var playFrom = [];
             var playUrl = [];

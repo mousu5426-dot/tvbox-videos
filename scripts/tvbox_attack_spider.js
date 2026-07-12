@@ -181,7 +181,6 @@ function collectDurations(html) {
 
 function parseVideoList(html, base, limit) {
     limit = limit || 40;
-    var q = '["\']';
 
     // ---- 第1部分: 按容器块提取 href + img ----
     var blockRe = /<div[^>]*class="[^"]*thumb-block[^"]*"[^>]*>([\s\S]*?)<\/div>\s*(?:<\/div>)?/gi;
@@ -219,17 +218,17 @@ function parseVideoList(html, base, limit) {
     var imgList = [];
     for (var bi = 0; bi < blocks.length; bi++) {
         var block = blocks[bi];
-        var hrefM = block.match(new RegExp('href=' + q + '(\\/video[^"'\\s]*)' + q, 'i'));
+        var hrefM = block.match(/href=["'](\/video[^"'\s]*)["']/i);
         if (!hrefM) continue;
         var href = hrefM[1];
         if (hrefList.indexOf(href) !== -1) continue;
 
         var imgUrl = '';
-        var ds = block.match(new RegExp('<img[^>]*data-src=' + q + '([^"'<]*)' + q, 'i'));
+        var ds = block.match(/<img[^>]*data-src=["']([^"'<]*)["']/i);
         if (ds && !ds[1].includes('blank.gif') && !ds[1].includes('data:image')) {
             imgUrl = ds[1];
         } else {
-            var s = block.match(new RegExp('<img[^>]*src=' + q + '([^"'<]*)' + q, 'i'));
+            var s = block.match(/<img[^>]*src=["']([^"'<]*)["']/i);
             if (s && !s[1].includes('blank.gif') && !s[1].includes('data:image') && !s[1].includes('/assets/')) {
                 imgUrl = s[1];
             }
@@ -248,7 +247,7 @@ function parseVideoList(html, base, limit) {
     var titleByHref = {};
     var qualRe = /^\d{3,4}p$|^4K$|^HD$/i;
     // 方式A: <a href="..." title="..."> (最可靠, /new 页面有)
-    var tA = new RegExp('<a\\s+href=' + q + '(\\/video[^"'\\s]*)' + q + '[^>]*title=' + q + '([^"'<]*)' + q, 'gi');
+    var tA = /<a\s+href=["'](\/video[^"'\s]*)["'][^>]*title=["']([^"'<]*)["']/gi;
     while ((m = tA.exec(html)) !== null) {
         if (!titleByHref[m[1]]) titleByHref[m[1]] = clean(m[2]);
     }
@@ -274,7 +273,7 @@ function parseVideoList(html, base, limit) {
     // 方式D: img[alt] 属性 (/best 页面 alt 目前是"视频", 仅后备)
     for (var bi = 0; bi < blocks.length; bi++) {
         var block = blocks[bi];
-        var hrefM2 = block.match(new RegExp('href=' + q + '(\\/video[^"'\\s]*)' + q, 'i'));
+        var hrefM2 = block.match(/href=["'](\/video[^"'\s]*)["']/i);
         if (!hrefM2) continue;
         var href2 = hrefM2[1];
         if (titleByHref[href2]) continue;
