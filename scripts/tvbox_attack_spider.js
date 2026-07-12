@@ -42,28 +42,25 @@ function makeImgUrl(img, base) {
     return img;
 }
 
-function extractImgUrl(html) {
-    const ds = html.match(/data-src\s*=\s*"([^"]*)"/);
-    if (ds && ds[1] && !ds[1].includes('blank.gif') && !ds[1].includes('data:image') && ds[1] !== '') return ds[1];
-    const src = html.match(/src\s*=\s*"([^"]*)"/);
-    if (src && src[1] && !src[1].includes('blank.gif') && !src[1].includes('data:image') && src[1] !== '') return src[1];
-    return '';
-}
-
 function parseVideoList(html, base, limit) {
     limit = limit || 40;
+    const q = '["\']'; // 匹配单引号或双引号
 
-    // 第1步: 按顺序收集所有 video 链接的 href
-    const hrefRe = /<a\s+href="(\/video[^"]*)"[^>]*>/gi;
+    // 第1步: 按顺序收集所有 video 链接的 href (兼容单/双引号)
+    const hrefRe = new RegExp('<a\\s+href=' + q + '(\\/video[^"\'\\s]*)' + q + '[^>]*>', 'gi');
     const hrefs = [];
     let m;
     while ((m = hrefRe.exec(html)) !== null) {
         if (!hrefs.some(h => h === m[1])) hrefs.push(m[1]);
     }
     console.log('[parseVideoList] video链接数: ' + hrefs.length);
+    // 如果为0, dump一段HTML看结构
+    if (hrefs.length === 0) {
+        console.log('[parseVideoList] HTML片段(前1500字): ' + html.substring(0, 1500).replace(/\n/g, ' ').replace(/\s+/g, ' '));
+    }
 
     // 第2步: 按顺序收集页面上所有有效图片URL
-    const imgRe = /<img[^>]*(?:data-src|src)\s*=\s*"([^"]*)"[^>]*>/gi;
+    const imgRe = new RegExp('<img[^>]*(?:data-src|src)\\s*=\\s*' + q + '([^"\'<]*)' + q + '[^>]*>', 'gi');
     const allImgs = [];
     while ((m = imgRe.exec(html)) !== null) {
         const url = m[1];
@@ -77,7 +74,7 @@ function parseVideoList(html, base, limit) {
     const titleMap = {};
     let titleCount = 0;
     // 方式A: a[href^="/video"][title]
-    const titleReA = /<a\s+href="(\/video[^"]*)"[^>]*title="([^"]*)"[^>]*>/gi;
+    const titleReA = new RegExp('<a\\s+href=' + q + '(\\/video[^"\'\\s]*)' + q + '[^>]*title=' + q + '([^"\'<]*)' + q + '[^>]*>', 'gi');
     while ((m = titleReA.exec(html)) !== null) {
         const name = clean(m[2]);
         if (m[1] && name && !titleMap[m[1]]) { titleMap[m[1]] = name; titleCount++; }
@@ -86,10 +83,10 @@ function parseVideoList(html, base, limit) {
     const titleReB = /<p[^>]*class="title"[^>]*>([\s\S]*?)<\/p>/gi;
     while ((m = titleReB.exec(html)) !== null) {
         const pHtml = m[1];
-        const aMatch = pHtml.match(/<a\s+href="(\/video[^"]*)"[^>]*>([\s\S]*?)<\/a>/i);
+        const aMatch = pHtml.match(/<a\s+href=(["\'])(\/video[^"\']*)\1[^>]*>([\s\S]*?)<\/a>/i);
         if (aMatch) {
-            const href = aMatch[1];
-            const name = clean(aMatch[2].replace(/<[^>]+>/g, ''));
+            const href = aMatch[2];
+            const name = clean(aMatch[3].replace(/<[^>]+>/g, ''));
             if (href && name && !titleMap[href]) { titleMap[href] = name; titleCount++; }
         }
     }
