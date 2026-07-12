@@ -14,6 +14,7 @@ const TVBOX_UA = [
 let HOST = 'https://www.xvideos.com';
 let siteKey = '';
 let siteType = 0;
+let CAT_BASE = ''; // 当前分类的base URL (支持跨域)
 
 function getExt() { try { return typeof ext !== 'undefined' ? ext : {}; } catch (e) { return {}; } }
 function getBaseUrl() { const cfg = getExt(); return cfg.base_url || HOST; }
@@ -54,7 +55,6 @@ function parseVideoList(html, base, limit) {
         if (!hrefs.some(h => h === m[1])) hrefs.push(m[1]);
     }
     console.log('[parseVideoList] video链接数: ' + hrefs.length);
-    // 如果为0, dump一段HTML看结构
     if (hrefs.length === 0) {
         console.log('[parseVideoList] HTML片段(前1500字): ' + html.substring(0, 1500).replace(/\n/g, ' ').replace(/\s+/g, ' '));
     }
@@ -130,6 +130,7 @@ async function home() {
         class: [
             { type_id: '/new/1', type_name: '最新视频' },
             { type_id: '/best/1', type_name: '最受欢迎' },
+            { type_id: 'https://www.xvideos.red/red/videos?sxcaf=4353LFJE75&xsc=mct', type_name: 'VIP视频(ren)' },
         ],
         filters: {},
     });
@@ -137,6 +138,7 @@ async function home() {
 
 async function homeVod() {
     console.log('[homeVod] 开始执行');
+    CAT_BASE = '';
     try {
         const base = getBaseUrl();
         const url = base + '/new/1';
@@ -161,14 +163,26 @@ async function category(tid, pg, filter, extend) {
     if (pg <= 0) pg = 1;
     console.log('[category] tid=' + tid + ' pg=' + pg);
     try {
-        const base = getBaseUrl();
-        const path = tid.replace(/\/\d+$/, '');
-        const url = base + path + '/' + pg;
-        console.log('[category] 请求URL: ' + url);
+        let url, catBase;
+        if (tid.startsWith('http')) {
+            // 绝对URL: 直接使用, 用 &p= 分页
+            const sep = tid.includes('?') ? '&' : '?';
+            url = tid + (pg > 1 ? sep + 'p=' + pg : '');
+            const m = tid.match(/^https?:\/\/[^\/]+/);
+            catBase = m ? m[0] : getBaseUrl();
+            CAT_BASE = catBase;
+        } else {
+            const base = getBaseUrl();
+            const path = tid.replace(/\/\d+$/, '');
+            url = base + path + '/' + pg;
+            catBase = base;
+            CAT_BASE = '';
+        }
+        console.log('[category] 请求URL: ' + url + ' catBase=' + catBase);
         const resp = await req(url, { headers: { 'User-Agent': randomUA() }, method: 'get' });
         const html = resp.content || '';
         console.log('[category] 响应长度: ' + html.length + ' 字符');
-        const list = parseVideoList(html, base, 60);
+        const list = parseVideoList(html, catBase, 60);
         console.log('[category] 返回列表: ' + list.length + ' 个视频');
         return JSON.stringify({ page: pg, pagecount: 100, limit: 30, total: 3000, list });
     } catch (e) {
@@ -180,7 +194,7 @@ async function category(tid, pg, filter, extend) {
 async function detail(id) {
     console.log('[detail] id=' + id);
     try {
-        const base = getBaseUrl();
+        const base = CAT_BASE || getBaseUrl();
         const url = base + (id.startsWith('/') ? id : '/' + id);
         console.log('[detail] 请求URL: ' + url);
         const resp = await req(url, { headers: { 'User-Agent': randomUA() } });
@@ -190,7 +204,7 @@ async function detail(id) {
         let title = '', pic = '', desc = '';
 
         const t = html.match(/<title>([\s\S]*?)<\/title>/i);
-        if (t) title = clean(t[1]).replace(/ - xvideos\.com.*$/i, '');
+        if (t) title = clean(t[1]).replace(/ - (xvideos|xvideos\.red)\..*$/i, '');
         console.log('[detail] 标题: ' + title);
 
         const og = html.match(/<meta\s+property="og:image"[^>]*content="([^"]*)"/i);
